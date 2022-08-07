@@ -468,12 +468,9 @@ class Tacotron2Loss(nn.Module):
         gate_target = gate_target.view(-1, 1)
 
         gate_out = gate_out.view(-1, 1)
-        #print("Loss size",gate_out.size(),gate_target.size())
         mel_loss = nn.MSELoss()(mel_out, mel_target)
                #    + nn.MSELoss()(mel_out_postnet, mel_target)
-        gate_loss = nn.BCELoss(reduction='mean')(gate_out, gate_target)
-
-        #print("Loss value",mel_loss,gate_loss)
+        gate_loss = nn.BCEWithLogitsLoss()(gate_out, gate_target)
         return mel_loss + gate_loss
 
 
@@ -506,16 +503,6 @@ lr = 0.01  # learning rate
 optimizer = torch.optim.SGD(model.parameters(), lr=lr)
 scheduler = torch.optim.lr_scheduler.StepLR(optimizer, 1, gamma=0.95)
 log_interval = 100
-
-
-# aaa = torch.ones(1,200,80)
-# bbb = torch.ones(1,200,80)
-# ccc = torch.ones(1,1,1)*0.8
-# ddd = torch.zeros(1,1,1)
-# loss = criterion(aaa, ccc ,bbb,ddd)
-# print("LLLLLoss test",loss.item())
-
-
 
 
 

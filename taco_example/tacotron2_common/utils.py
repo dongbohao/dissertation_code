@@ -75,7 +75,7 @@ def load_filepaths_and_text(dataset_path, filename, split="|"):
 
 
 def to_gpu(x):
-    return x
+    #return x
     x = x.contiguous()
 
     if torch.cuda.is_available():

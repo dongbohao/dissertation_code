@@ -3,6 +3,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 import torch
 
+from tacotron2_common.utils import to_gpu
+
 class ChainMatrix():
 
     def __init__(self,c_tract = 4, areat_tract = 1.543):
@@ -87,6 +89,7 @@ def generate_element_chain_matrix(matrix_name,sample_rate= 22050, n_fft=1024, me
     # plt.savefig("%s.png"%matrix_name,dpi=300)
 
     m = torch.tensor([[frequency_points]]).float()
+    m = to_gpu(m).float()
     print("Chain matrix",m.size())
     return m
 
