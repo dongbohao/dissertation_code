@@ -38,8 +38,9 @@ class Ag():
 
 
 ag = Ag(output='out.txt',
-        dataset_path=r'D:\tacotron2\DeepLearningExamples\PyTorch\SpeechSynthesis\Tacotron2',
-        model_name='Tacotron2',
+        #dataset_path=r'D:\tacotron2\DeepLearningExamples\PyTorch\SpeechSynthesis\Tacotron2',
+        dataset_path = "/data/acq21bd/DeepLearningExamples/PyTorch/SpeechSynthesis/Tacotron2",
+	model_name='Tacotron2',
         log_file='nvlog.json',
         anneal_steps=None,
         anneal_factor=0.1,
@@ -505,7 +506,7 @@ criterion = Tacotron2Loss()
 lr = 0.01  # learning rate
 optimizer = torch.optim.SGD(model.parameters(), lr=lr)
 scheduler = torch.optim.lr_scheduler.StepLR(optimizer, 1, gamma=0.95)
-log_interval = 100
+log_interval = 10
 
 
 # aaa = torch.ones(1,200,80)
