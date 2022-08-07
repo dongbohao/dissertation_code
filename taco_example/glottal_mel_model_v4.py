@@ -12,7 +12,7 @@ import torchaudio
 from ABCD import make_chain_matrix
 import torchmetrics
 from tacotron2_common.layers import LinearNorm,ConvNorm
-from tacotron2_common.utils import to_gpu, get_mask_from_lengths
+from tacotron2_common.utils import to_gpu, get_mask_from_lengths, to_device
 
 from torch import save, load, no_grad, LongTensor
 
@@ -25,8 +25,9 @@ from torch import save, load, no_grad, LongTensor
 np.random.seed(61112)
 torch.manual_seed(61112)
 print(torch.__version__)
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-print("Device",device)
+#device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+print("Cuda staus",torch.cuda.is_available())
+print("Device",torch.cuda.get_device_name())
 
 class Ag():
     def __init__(self,**kargs):
@@ -104,23 +105,23 @@ bohaoDecoder_config = {
 
 class BohaoDecoder(nn.Module):
     def __init__(self,d_model, nhead, dropout,nlayers,hidden_dim,max_decoder_steps, gate_threshold,
-                 early_stopping):
+                 early_stopping, fc_out_dim):
         super(BohaoDecoder, self).__init__()
         self.hidden_dim = hidden_dim
         self.max_decoder_steps = max_decoder_steps
         self.gate_threshold = gate_threshold
         self.early_stopping = early_stopping
 
-        decoder_layers = TransformerDecoderLayer(d_model, nhead, hidden_dim, dropout,batch_first=True).to(device)
-        self.transformerdecoder = TransformerDecoder(decoder_layers, nlayers).to(device)
+        decoder_layers = to_device(TransformerDecoderLayer(d_model, nhead, hidden_dim, dropout,batch_first=True))
+        self.transformerdecoder = to_device(TransformerDecoder(decoder_layers, nlayers))
 
-        self.fc_glottal_out = nn.Linear(hidden_dim,hidden_dim*2).to(device)
+        self.fc_glottal_out = to_device(nn.Linear(hidden_dim,fc_out_dim))
         print("GGGGate lyaer",hidden_dim)
-        self.gate_layer = LinearNorm(
+        self.gate_layer = to_device(LinearNorm(
             hidden_dim, 1,
-            bias=True, w_init_gain='sigmoid').to(device)
+            bias=True, w_init_gain='sigmoid'))
 
-        self.sft = nn.Sigmoid().to(device)
+        self.sft = to_device(nn.Sigmoid())
 
     def get_go_frame(self, memory):
         """ Gets all zeros frames to use as first decoder input
@@ -259,39 +260,37 @@ class TransformerModel(nn.Module):
     def __init__(self, ntoken: int, d_model: int, nhead: int, d_hid: int,
                  nlayers: int, dropout: float = 0.5, channels: int = 80,batch_first: bool = True, ag=None):
         super(TransformerModel, self).__init__()
-        self.encoder = nn.Embedding(ntoken, d_hid).to(device)
-        self.pos_encoder = PositionalEncoding(d_hid, dropout).to(device)
+        self.encoder = to_device(nn.Embedding(ntoken, d_hid))
+        self.pos_encoder = to_device(PositionalEncoding(d_hid, dropout))
 
         #self.decoder = nn.Embedding(channels, d_hid)
         #self.pos_decoder = PositionalEncoding(d_hid, dropout)
 
-        encoder_layers = TransformerEncoderLayer(d_model, nhead, d_hid, dropout).to(device)
-        self.transformer_glottal_source_encoder = TransformerEncoder(encoder_layers, nlayers).to(device)
+        encoder_layers = to_device(TransformerEncoderLayer(d_model, nhead, d_hid, dropout))
+        self.transformer_glottal_source_encoder = to_device(TransformerEncoder(encoder_layers, nlayers))
 
+        self.n_fft_dim = int((0 + ag.filter_length / 2) * 4)
+        print("TTTT", self.n_fft_dim, d_hid)
         bohaoDecoder_config.update({"d_model":d_model,
                                     "nhead":nhead,
                                     "hidden_dim":d_hid,
                                     "nlayers":nlayers,
-                                    "dropout":dropout})
-        self.transformer_glottal_source_decoder = BohaoDecoder(**bohaoDecoder_config).to(device)
-
-        #self.channel_dim = channels * 2
-
-        self.n_fft_dim = int((0+ag.filter_length/2)*2)
-        #print("TTTT",self.n_fft_dim,d_hid)
-        self.fc_glottal_out = nn.Linear(d_hid, self.n_fft_dim).to(device)
+                                    "dropout":dropout,
+                                    "fc_out_dim":self.n_fft_dim})
+        self.transformer_glottal_source_decoder = to_device(BohaoDecoder(**bohaoDecoder_config))
 
         self.ag = ag
-        self.mic_loss = nn.Linear(self.ag.n_mel_channels, self.ag.n_mel_channels).to(device)
-        self.log_mel = nn.Linear(self.ag.n_mel_channels, self.ag.n_mel_channels).to(device)
+        self.mic_loss = to_device(nn.Linear(self.ag.n_mel_channels, self.ag.n_mel_channels))
+        self.log_mel = to_device(nn.Linear(self.ag.n_mel_channels, self.ag.n_mel_channels))
 
         chain_matrix = make_chain_matrix(sample_rate=ag.sampling_rate, n_fft=ag.filter_length, mel_channels=ag.n_mel_channels)
-        self.chain_matrix_A = chain_matrix["A"][:,:,1:]
-        self.chain_matrix_B = chain_matrix["B"][:,:,1:]
 
-        self.mel_pressure = torchaudio.transforms.MelScale(n_stft=int(0 + self.ag.filter_length / 2),
+        #self.chain_matrix_A = chain_matrix["A"][:,:,1:]
+        #self.chain_matrix_B = chain_matrix["B"][:,:,1:]
+
+        self.mel_pressure = to_device(torchaudio.transforms.MelScale(n_stft=int(0 + self.ag.filter_length / 2),
                                                                          n_mels=self.ag.n_mel_channels,
-                                                                         f_max=self.ag.mel_fmax).to(device).float()
+                                                                         f_max=self.ag.mel_fmax)).float()
 
 
     def generate_square_subsequent_mask(self, sz):
@@ -332,7 +331,8 @@ class TransformerModel(nn.Module):
         glottal_output = glottal_decoder_output
         #print("g output", glottal_output.size())
         output_pressure = glottal_output[:,:,:512]
-        output_velocity = glottal_output[:,:,512:]   # shape B,times,1+n_fft/2
+        output_velocity = glottal_output[:,:,512:1024]   # shape B,times,1+n_fft/2
+
 
         #print("output pressure size", output_pressure.size())
         #print("output velocity size", output_velocity.size())
@@ -348,12 +348,13 @@ class TransformerModel(nn.Module):
         #print("finish inverse mel",stft_pressure.size(),stft_velocity.size())
         #stft_velocity = stft_velocity.permute(0,2,1)  # shape B,times, 1+n_ttf/2
         #stft_pressure = stft_pressure.permute(0,2,1)
-        chain_matrix_A = self.chain_matrix_A   # shape 1,1,1+n_ttf/2
-        chain_matrix_B = self.chain_matrix_B
+        chain_matrix_A = glottal_output[:,:,1024:1536]   # shape B,1,0+n_ttf/2
+        chain_matrix_B = glottal_output[:,:,1536:2048]
 
         #print("CCCC",chain_matrix_A.size())
         #print("PPPP stft",stft_pressure.size())
 
+        #print("SSSSize",chain_matrix_A.size(),chain_matrix_B.size(),stft_pressure.size(),stft_velocity.size())
         stft_lips_output_pressure = chain_matrix_A * stft_pressure + chain_matrix_B * stft_velocity
         #print("Stft after chain",stft_lips_output_pressure.size())
         mel_lips_output_pressure = self.mel_pressure(stft_lips_output_pressure.permute(0,2,1))
@@ -393,9 +394,6 @@ class PositionalEncoding(nn.Module):
         """
         x = x + self.pe[:x.size(0)]
         return self.dropout(x)
-
-
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 
 
@@ -469,8 +467,7 @@ class Tacotron2Loss(nn.Module):
 
         gate_out = gate_out.view(-1, 1)
         mel_loss = nn.MSELoss()(mel_out, mel_target)
-               #    + nn.MSELoss()(mel_out_postnet, mel_target)
-        gate_loss = nn.BCEWithLogitsLoss()(gate_out, gate_target)
+        gate_loss = nn.BCELoss(reduction='mean')(gate_out, gate_target)
         return mel_loss + gate_loss
 
 
@@ -494,7 +491,7 @@ d_hid = 512  # dimension of the feedforward network model in nn.TransformerEncod
 nlayers = 2  # number of nn.TransformerEncoderLayer in nn.TransformerEncoder
 nhead = 2  # number of heads in nn.MultiheadAttention
 dropout = 0.2  # dropout probability
-#model = TransformerModel(ntokens, emsize, nhead, d_hid, nlayers, dropout, ag.n_mel_channels).to(device)
+#model = TransformerModel(ntokens, emsize, nhead, d_hid, nlayers, dropout, ag.n_mel_channels).cuda()
 model = TransformerModel(ntokens, emsize, nhead, d_hid, nlayers, dropout, ag.n_mel_channels, batch_first=True, ag = ag)
 
 #criterion = nn.MSELoss()
@@ -502,7 +499,7 @@ criterion = Tacotron2Loss()
 lr = 0.01  # learning rate
 optimizer = torch.optim.SGD(model.parameters(), lr=lr)
 scheduler = torch.optim.lr_scheduler.StepLR(optimizer, 1, gamma=0.95)
-log_interval = 100
+log_interval = 2
 
 
 

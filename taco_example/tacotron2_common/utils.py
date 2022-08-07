@@ -81,3 +81,11 @@ def to_gpu(x):
     if torch.cuda.is_available():
         x = x.cuda(non_blocking=True)
     return x
+
+
+def to_device(m):
+    #return x
+
+    if torch.cuda.is_available():
+        m = torch.nn.DataParallel(m)
+    return m
