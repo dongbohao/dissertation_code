@@ -87,5 +87,6 @@ def to_device(m):
     #return x
 
     if torch.cuda.is_available():
-        m = torch.nn.DataParallel(m)
+        #m = torch.nn.DataParallel(m)
+        return m.cuda()
     return m

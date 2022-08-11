@@ -1,3 +1,4 @@
+import numpy
 import torch
 
 
@@ -14,16 +15,34 @@ waveglow = waveglow.remove_weightnorm(waveglow)
 waveglow = waveglow.to("cuda")
 waveglow.eval()
 
-text = "Hello world, I missed you so much."
+text = "Mrs. De Mohrenschildt thought that Oswald,"
 
 utils = torch.hub.load('NVIDIA/DeepLearningExamples:torchhub', 'nvidia_tts_utils')
 sequences, lengths = utils.prepare_input_sequence([text])
 
+
+mel_spec = []
 with torch.no_grad():
     mel, _, _ = tacotron2.infer(sequences, lengths)
+    mel_spec.append(mel.to("cpu").squeeze().detach().numpy())
     audio = waveglow.infer(mel)
 audio_numpy = audio[0].data.cpu().numpy()
 rate = 22050
+
+
+mel_spec = numpy.vstack(mel_spec)
+print("Mel shape",mel_spec.shape)
+
+import librosa
+import librosa.display
+import matplotlib.pyplot as plt
+
+plt.figure(figsize=(20, 5))
+librosa.display.specshow(mel_spec, sr=rate, x_axis='time', y_axis='hz', hop_length=256,
+                             cmap='magma', fmax=80)
+plt.colorbar(label='Decibels')
+plt.savefig("tacotron2.png")
+
 
 from scipy.io.wavfile import write
 write("audio.wav", rate, audio_numpy)

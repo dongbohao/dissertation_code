@@ -38,8 +38,8 @@ class Ag():
 
 
 ag = Ag(output='out.txt',
-        #dataset_path=r'D:\tacotron2\DeepLearningExamples\PyTorch\SpeechSynthesis\Tacotron2',
-        dataset_path = "/data/acq21bd/DeepLearningExamples/PyTorch/SpeechSynthesis/Tacotron2",
+        dataset_path=r'D:\tacotron2\DeepLearningExamples\PyTorch\SpeechSynthesis\Tacotron2',
+        #dataset_path = "/data/acq21bd/DeepLearningExamples/PyTorch/SpeechSynthesis/Tacotron2",
 	model_name='Tacotron2',
         log_file='nvlog.json',
         anneal_steps=None,
@@ -600,55 +600,58 @@ val_loss_list = []
 
 
 # validation
-for e in range(0,ag.epochs):
-    train_loss = train()
-    val_loss = 0.
-    # valset_loader = DataLoader(valset, num_workers=0, shuffle=shuffle,
-    #                            sampler=train_sampler,
-    #                            batch_size=ag.batch_size, pin_memory=False,
-    #                            drop_last=True, collate_fn=collate_fn_val)
-    # for i, batch in enumerate(valset_loader):
-    #     text_padded, input_lengths, mel_padded, gate_padded, \
-    #     output_lengths, len_x = batch
-    #     x, y, num_items = data_function.batch_to_gpu(batch)
-    #     target = y[0].permute(0, 2, 1)  # y[0] is mel
-    #     gate = y[1]  # y[1] is gate padding
-    #     target_fill_zero = torch.zeros(ag.batch_size, 2000 - target.size(1), target.size(2))
-    #     target_fill_zero = to_gpu(target_fill_zero).float()
-    #     target = torch.cat([target, target_fill_zero], dim=1)
-    #
-    #     gate_fill_one = torch.zeros(ag.batch_size, 2000 - gate.size(1))
-    #     gate_fill_one = to_gpu(gate_fill_one).float()
-    #     gate = torch.cat([gate, gate_fill_one], dim=1)
-    #
-    #     pred_y_mel, pred_y_gate_output = model(x[0])
-    #
-    #     pred_y_target = pred_y_mel
-    #
-    #     #loss = criterion(pred_y_target, pred_y_gate_output, target.float(), gate.float())
-    #     lossi = 0.1
-    #     print("val loss", lossi)
-    #
-    #     val_loss += lossi
-    #
-    #     if i>1:
-    #         break
+def val():
+    for e in range(0,ag.epochs):
+        train_loss = train()
+        val_loss = 0.
+        # valset_loader = DataLoader(valset, num_workers=0, shuffle=shuffle,
+        #                            sampler=train_sampler,
+        #                            batch_size=ag.batch_size, pin_memory=False,
+        #                            drop_last=True, collate_fn=collate_fn_val)
+        # for i, batch in enumerate(valset_loader):
+        #     text_padded, input_lengths, mel_padded, gate_padded, \
+        #     output_lengths, len_x = batch
+        #     x, y, num_items = data_function.batch_to_gpu(batch)
+        #     target = y[0].permute(0, 2, 1)  # y[0] is mel
+        #     gate = y[1]  # y[1] is gate padding
+        #     target_fill_zero = torch.zeros(ag.batch_size, 2000 - target.size(1), target.size(2))
+        #     target_fill_zero = to_gpu(target_fill_zero).float()
+        #     target = torch.cat([target, target_fill_zero], dim=1)
+        #
+        #     gate_fill_one = torch.zeros(ag.batch_size, 2000 - gate.size(1))
+        #     gate_fill_one = to_gpu(gate_fill_one).float()
+        #     gate = torch.cat([gate, gate_fill_one], dim=1)
+        #
+        #     pred_y_mel, pred_y_gate_output = model(x[0])
+        #
+        #     pred_y_target = pred_y_mel
+        #
+        #     #loss = criterion(pred_y_target, pred_y_gate_output, target.float(), gate.float())
+        #     lossi = 0.1
+        #     print("val loss", lossi)
+        #
+        #     val_loss += lossi
+        #
+        #     if i>1:
+        #         break
 
-    i = 1
-    val_loss_list.append(val_loss/(i+1))
-    train_loss_list.append(train_loss)
+        i = 1
+        val_loss_list.append(val_loss/(i+1))
+        train_loss_list.append(train_loss)
+
+#val()
 
 print("Train loss list",train_loss_list)
 print("Val loss list", val_loss_list)
 
 
-checkpoint_path = "checkpoint.pt"
-torch.save({
-            'epoch': e,
-            'model_state_dict': model.state_dict(),
-            'optimizer_state_dict': optimizer.state_dict(),
-            'loss': train_loss_list,
-            }, checkpoint_path)
+# checkpoint_path = "checkpoint.pt"
+# torch.save({
+#             'epoch': e,
+#             'model_state_dict': model.state_dict(),
+#             'optimizer_state_dict': optimizer.state_dict(),
+#             'loss': train_loss_list,
+#             }, checkpoint_path)
 
 
 def print_spectrogram(pred_y_mel,gate,ground_truth = False):
@@ -706,7 +709,7 @@ def tt_dataset():
         break
 
 
-tt_dataset()
+#tt_dataset()
 
 
 

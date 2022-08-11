@@ -106,7 +106,7 @@ bohaoDecoder_config = {
 class BohaoDecoder(nn.Module):
     def __init__(self,d_model, nhead, dropout,nlayers,hidden_dim,max_decoder_steps, gate_threshold,
                  early_stopping, fc_out_dim):
-        super(BohaoDecoder, self).__init__()
+        super().__init__()
         self.hidden_dim = hidden_dim
         self.max_decoder_steps = max_decoder_steps
         self.gate_threshold = gate_threshold
@@ -198,7 +198,7 @@ class BohaoDecoder(nn.Module):
         #print("Bohadecoder FFFFFFFFFFFFFFFFFFFF", gate_prediction.size(),glottal_output.size())
         return hidden_output,glottal_output,gate_prediction
 
-    def forward(self, memory, memory_lengths):
+    def forward(self, memory, mel_l):
         """ Decoder inference
         PARAMS
         ------
@@ -218,7 +218,8 @@ class BohaoDecoder(nn.Module):
             torch.zeros(1), torch.zeros(1), torch.zeros(1))
         first_iter = True
         c = 0
-        while True:
+        #while True:
+        for cont_index in range(0,mel_l):
             #decoder_input = self.prenet(decoder_input)
             hidden_output,glottal_output,gate_output = self.decode(decoder_input,memory)
             #print("Gate out",gate_output)
@@ -238,12 +239,14 @@ class BohaoDecoder(nn.Module):
             mel_lengths += not_finished
             #print("att context", hidden_output)
             #print("Not finish", not_finished,gate_output,dec,"---",gate_output.size())
-            if self.early_stopping and torch.sum(not_finished) == 0:
-                #print("stop by finished flag at loop", c)
-                break
-            if glottal_outputs.size(1) == self.max_decoder_steps:
-                #print("Warning! Reached max decoder steps")
-                break
+
+
+            # if self.early_stopping and torch.sum(not_finished) == 0:
+            #     print("stop by finished flag at loop", c)
+            #     break
+            # if glottal_outputs.size(1) == self.max_decoder_steps:
+            #     print("Warning! Reached max decoder steps")
+            #     break
 
             c += 1
             #print("current loop ", c)
@@ -256,10 +259,10 @@ class BohaoDecoder(nn.Module):
 
 
 
-class TransformerModel(nn.Module):
+class TfModel(nn.Module):
     def __init__(self, ntoken: int, d_model: int, nhead: int, d_hid: int,
                  nlayers: int, dropout: float = 0.5, channels: int = 80,batch_first: bool = True, ag=None):
-        super(TransformerModel, self).__init__()
+        super().__init__()
         self.encoder = to_device(nn.Embedding(ntoken, d_hid))
         #print(self.encoder)
         self.pos_encoder = to_device(PositionalEncoding(d_hid, dropout))
@@ -303,7 +306,7 @@ class TransformerModel(nn.Module):
         return (inp == 0).transpose(0, 1)
 
 
-    def forward(self, src):
+    def forward(self, src,mel_length):
         #if self.trg_mask is None or self.trg_mask.size(0) != len(trg):
         #    self.trg_mask = self.generate_square_subsequent_mask(len(trg)).to(trg.device)
 
@@ -322,11 +325,11 @@ class TransformerModel(nn.Module):
         #print("Scr",src.size())
         #print("Tgt",trg.size())
         glottal_encoder_output = self.transformer_glottal_source_encoder(src)
-        print("g encoder out", glottal_encoder_output.size())
+        #print("g encoder out", glottal_encoder_output.size())
 
         memory_lengths = torch.tensor([x.size(0) for x in glottal_encoder_output])
         #print("mem len",memory_lengths)
-        glottal_decoder_output, gate_outputs = self.transformer_glottal_source_decoder(glottal_encoder_output,memory_lengths)
+        glottal_decoder_output, gate_outputs = self.transformer_glottal_source_decoder(glottal_encoder_output,mel_length)
         #print("g decoder out", glottal_decoder_output.size())
         #glottal_output = self.fc_glottal_out(glottal_decoder_output)
         glottal_output = glottal_decoder_output
@@ -463,26 +466,14 @@ class Tacotron2Loss(nn.Module):
 
     def forward(self, mel_out, gate_out, mel_target,gate_target,):
         mel_target.requires_grad = True
-        gate_target.requires_grad = True
+        #gate_target.requires_grad = True
 
-        gate_target = gate_target.view(-1, 1)
-        gate_out = gate_out.view(-1, 1)
+        #gate_target = gate_target.view(-1, 1)
+        #gate_out = gate_out.view(-1, 1)
 
-        mel_loss = nn.MSELoss()(mel_out.view(-1, 1), mel_target.view(-1, 1))
-        gate_loss = nn.BCELoss(reduction='mean')(gate_out, gate_target)
-        return mel_loss + gate_loss
-
-
-def multi_loss(mel_out, gate_out, mel_target,gate_target,):
-    mel_target.requires_grad = True
-    gate_target.requires_grad = True
-    gate_target = gate_target.view(-1, 1)
-
-    gate_out = gate_out.view(-1, 1)
-    mse = torchmetrics.MeanSquaredError()
-    mel_loss = mse(mel_out, mel_target)
-    gate_loss = torchmetrics.bce(gate_out, gate_target)
-    return mel_loss + gate_loss
+        mel_loss = nn.MSELoss()(mel_out, mel_target)
+        #gate_loss = nn.BCELoss(reduction='mean')(gate_out, gate_target)
+        return mel_loss
 
 
 
@@ -494,7 +485,7 @@ nlayers = 2  # number of nn.TransformerEncoderLayer in nn.TransformerEncoder
 nhead = 2  # number of heads in nn.MultiheadAttention
 dropout = 0.2  # dropout probability
 #model = TransformerModel(ntokens, emsize, nhead, d_hid, nlayers, dropout, ag.n_mel_channels).cuda()
-model = TransformerModel(ntokens, emsize, nhead, d_hid, nlayers, dropout, ag.n_mel_channels, batch_first=True, ag = ag)
+model = TfModel(ntokens, emsize, nhead, d_hid, nlayers, dropout, ag.n_mel_channels, batch_first=True, ag = ag)
 
 #criterion = nn.MSELoss()
 criterion = Tacotron2Loss()
@@ -528,19 +519,21 @@ def train():
 
         #target = torch.randn(1,1,80)
 
-        target_fill_zero = torch.zeros(ag.batch_size, 2000 - target.size(1), target.size(2))
-        target_fill_zero = to_gpu(target_fill_zero).float()
-        target = torch.cat([target, target_fill_zero], dim=1)
+        #target_fill_zero = torch.zeros(ag.batch_size, 2000 - target.size(1), target.size(2))
+        #target_fill_zero = to_gpu(target_fill_zero).float()
+        #target = torch.cat([target, target_fill_zero], dim=1)
         #target = to_gpu(target).float()
 
-        gate_fill_one = torch.zeros(ag.batch_size, 2000 - gate.size(1))
-        gate_fill_one = to_gpu(gate_fill_one).float()
-        gate = torch.cat([gate,gate_fill_one],dim=1)
+        #gate_fill_one = torch.zeros(ag.batch_size, 2000 - gate.size(1))
+        #gate_fill_one = to_gpu(gate_fill_one).float()
+        #gate = torch.cat([gate,gate_fill_one],dim=1)
         #gate = to_gpu(gate).float()
         #print("Fill zero target ", target.size())
         #print("Fill ones gate",gate.size())
 
-        pred_y_mel, pred_y_gate_output, predict_velocity = model(x[0])
+        mel_length = to_gpu(torch.tensor([target.size(1)]))
+
+        pred_y_mel, pred_y_gate_output, predict_velocity = model(x[0],mel_length)
 
         #print("gate", gate.size())
         #print("pred gate",pred_y_gate_output.size())
@@ -576,8 +569,8 @@ def train():
 
 
 
-        #if i >1:
-        #    break
+        if i >0:
+            break
     return history_train_loss/(i+1)
 
 train_loss_list = []
@@ -627,13 +620,14 @@ def val():
         print("Train loss list", train_loss_list)
         print("Val loss list", val_loss_list)
 
-        checkpoint_path = "checkpoint.pt"
+        checkpoint_path = "checkpoint_v5.pt"
         torch.save({
             'epoch': e,
             'model_state_dict': model.state_dict(),
             'optimizer_state_dict': optimizer.state_dict(),
             'loss': train_loss_list,
         }, checkpoint_path)
+        print("checkpoint saved")
 
 
 
@@ -653,7 +647,7 @@ def print_spectrogram(pred_y_mel,gate,ground_truth = False):
     else:
         gate_index = 2000
     print("Gate index",gate_index)
-    log_spectro = log_spectro[:,:gate_index]
+    #log_spectro = log_spectro[:,:gate_index]
 
     # Plotting the short-time Fourier Transformation
     plt.figure(figsize=(20, 5))
@@ -662,9 +656,9 @@ def print_spectrogram(pred_y_mel,gate,ground_truth = False):
                              cmap='magma', fmax=80)
     plt.colorbar(label='Decibels')
     if ground_truth:
-        plt.savefig("v4_groun_truth.png")
+        plt.savefig("v5_groun_truth.png")
     else:
-        plt.savefig("v4_test_predict.png")
+        plt.savefig("v5_test_predict.png")
 
 
 
@@ -675,16 +669,16 @@ def tt_dataset():
         gate = y[1]  # y[1] is gate padding
 
 
-        target_fill_zero = torch.zeros(1, 2000 - target.size(1), target.size(2))
-        target_fill_zero = to_gpu(target_fill_zero).float()
-        target = torch.cat([target, target_fill_zero], dim=1)
+        #target_fill_zero = torch.zeros(1, 2000 - target.size(1), target.size(2))
+        #target_fill_zero = to_gpu(target_fill_zero).float()
+        #target = torch.cat([target, target_fill_zero], dim=1)
 
-        gate_fill_one = torch.zeros(1, 2000 - gate.size(1))
-        gate_fill_one = to_gpu(gate_fill_one).float()
-        gate = torch.cat([gate, gate_fill_one], dim=1)
+        #gate_fill_one = torch.zeros(1, 2000 - gate.size(1))
+        #gate_fill_one = to_gpu(gate_fill_one).float()
+        #gate = torch.cat([gate, gate_fill_one], dim=1)
 
-
-        pred_y_mel, pred_y_gate_output, predict_velocity = model(x[0])
+        mel_length = to_gpu(torch.tensor([target.size(1)]))
+        pred_y_mel, pred_y_gate_output, predict_velocity = model(x[0],mel_length)
 
         loss = criterion(pred_y_mel, pred_y_gate_output, target.float(), gate.float())
         print("Test loss", loss.item)
@@ -696,7 +690,7 @@ def tt_dataset():
         break
 
 val()
-#tt_dataset()
+tt_dataset()
 
 
 
