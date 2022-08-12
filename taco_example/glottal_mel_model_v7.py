@@ -116,6 +116,7 @@ class BohaoDecoder(nn.Module):
         self.transformerdecoder = to_device(TransformerDecoder(decoder_layers, nlayers))
 
         self.fc_glottal_out = to_device(nn.Linear(hidden_dim,fc_out_dim))
+        self.active = to_device(nn.ReLU())
         print("GGGGate lyaer",hidden_dim)
         self.gate_layer = to_device(LinearNorm(
             hidden_dim, 1,
@@ -187,7 +188,6 @@ class BohaoDecoder(nn.Module):
 
         #print("Bohaodecoder",decoder_input.size(),memory.size())
         hidden_output = self.transformerdecoder(tgt = decoder_input,memory=memory)
-        glottal_output = self.fc_glottal_out(hidden_output)
         #print("hidd",hidden_output)
         gate_prediction = self.gate_layer(hidden_output)
         gate_prediction = self.sft(gate_prediction)
@@ -196,7 +196,7 @@ class BohaoDecoder(nn.Module):
         #print("FF111111111111111111111",glottal_output.size())
         #glottal_output = torch.permute(glottal_output,(1,0,2))
         #print("Bohadecoder FFFFFFFFFFFFFFFFFFFF", gate_prediction.size(),glottal_output.size())
-        return hidden_output,glottal_output,gate_prediction
+        return hidden_output,gate_prediction
 
     def forward(self, memory, mel_l):
         """ Decoder inference
@@ -214,22 +214,22 @@ class BohaoDecoder(nn.Module):
         mel_lengths = torch.zeros([memory.size(0)], dtype=torch.int32, device=memory.device)
         not_finished = torch.ones([memory.size(0)], dtype=torch.int32, device=memory.device)
 
-        glottal_outputs, gate_outputs, alignments = (
+        hidden_outputs, gate_outputs, alignments = (
             torch.zeros(1), torch.zeros(1), torch.zeros(1))
         first_iter = True
         c = 0
         #while True:
         for cont_index in range(0,mel_l):
             #decoder_input = self.prenet(decoder_input)
-            hidden_output,glottal_output,gate_output = self.decode(decoder_input,memory)
+            hidden_output,gate_output = self.decode(decoder_input,memory)
             #print("Gate out",gate_output)
             if first_iter:
-                glottal_outputs = glottal_output
+                hidden_outputs = hidden_output
                 gate_outputs = gate_output.unsqueeze(1)
                 first_iter = False
             else:
-                glottal_outputs = torch.cat(
-                    (glottal_outputs, glottal_output), dim=1)
+                hidden_outputs = torch.cat(
+                    (hidden_outputs, hidden_output), dim=1)
                 gate_outputs = torch.cat((gate_outputs, gate_output.unsqueeze(1)), dim=1)
 
             dec = torch.le(gate_output,
@@ -252,8 +252,8 @@ class BohaoDecoder(nn.Module):
             #print("current loop ", c)
             decoder_input = hidden_output
 
-        glottal_output, gate_outputs = self.parse_decoder_outputs(
-            glottal_output, gate_outputs)
+        glottal_outputs = self.active(self.fc_glottal_out(hidden_outputs))
+
 
         return glottal_outputs, gate_outputs
 
@@ -277,7 +277,7 @@ class TfModel(nn.Module):
         self.n_fft_dim = 80
         print("TTTT", self.n_fft_dim, d_hid)
         bohaoDecoder_config.update({"d_model":d_model,
-                                    "nhead":nhead,
+                                    "nhead":nhead*16,
                                     "hidden_dim":d_hid,
                                     "nlayers":nlayers,
                                     "dropout":dropout,
@@ -296,6 +296,7 @@ class TfModel(nn.Module):
         self.mel_pressure = to_device(torchaudio.transforms.MelScale(n_stft=int(0 + self.ag.filter_length / 2),
                                                                          n_mels=self.ag.n_mel_channels,
                                                                          f_max=self.ag.mel_fmax)).float()
+        self.active = to_device(nn.ReLU())
 
 
     def generate_square_subsequent_mask(self, sz):
@@ -354,8 +355,9 @@ class TfModel(nn.Module):
 
         #print("mel size",mel_lips_output_pressure.size())
         mel_lips_output_pressure = glottal_decoder_output
+        #output_mel = mel_lips_output_pressure
         output_mel = self.mic_loss(mel_lips_output_pressure.float())
-        output_mel = self.log_mel(output_mel)
+        #output_mel = self.log_mel(output_mel)
         output_velocity = torch.randn(1,1,1)
         #print("Lips out put", mel_lips_output_pressure.size())
         return output_mel,gate_outputs,output_velocity
@@ -560,8 +562,8 @@ def train():
 
 
 
-        #if i >0:
-        #    break
+        if i >200:
+            break
     return history_train_loss/(i+1)
 
 train_loss_list = []
@@ -673,7 +675,7 @@ def tt_dataset():
         pred_y_mel, pred_y_gate_output, predict_velocity = model(x[0],mel_length)
 
         loss = criterion(pred_y_mel, pred_y_gate_output, target.float(), gate.float())
-        print("Test loss", loss.item)
+        print("Test loss", loss.item())
 
         print_spectrogram(pred_y_mel,pred_y_gate_output)
         print_spectrogram(target,gate,ground_truth=True)
