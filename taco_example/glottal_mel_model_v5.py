@@ -40,6 +40,7 @@ class Ag():
 
 ag = Ag(output='out.txt',
         dataset_path=r'D:\tacotron2\DeepLearningExamples\PyTorch\SpeechSynthesis\Tacotron2',
+        #dataset_path  = "/data/acq21bd/DeepLearningExamples/PyTorch/SpeechSynthesis/Tacotron2",
         model_name='Tacotron2',
         log_file='nvlog.json',
         anneal_steps=None,
@@ -185,17 +186,15 @@ class BohaoDecoder(nn.Module):
 
     def decode(self, decoder_input, memory):
 
-        #print("Bohaodecoder",decoder_input.size(),memory.size())
+
         hidden_output = self.transformerdecoder(tgt = decoder_input,memory=memory)
         glottal_output = self.fc_glottal_out(hidden_output)
-        #print("hidd",hidden_output)
+
         gate_prediction = self.gate_layer(hidden_output)
         gate_prediction = self.sft(gate_prediction)
-        #print("Gate predi", gate_prediction)
+
         gate_prediction = torch.squeeze(gate_prediction,dim=1)
-        #print("FF111111111111111111111",glottal_output.size())
-        #glottal_output = torch.permute(glottal_output,(1,0,2))
-        #print("Bohadecoder FFFFFFFFFFFFFFFFFFFF", gate_prediction.size(),glottal_output.size())
+
         return hidden_output,glottal_output,gate_prediction
 
     def forward(self, memory, mel_l):
@@ -222,7 +221,7 @@ class BohaoDecoder(nn.Module):
         for cont_index in range(0,mel_l):
             #decoder_input = self.prenet(decoder_input)
             hidden_output,glottal_output,gate_output = self.decode(decoder_input,memory)
-            #print("Gate out",gate_output)
+
             if first_iter:
                 glottal_outputs = glottal_output
                 gate_outputs = gate_output.unsqueeze(1)
@@ -234,11 +233,10 @@ class BohaoDecoder(nn.Module):
 
             dec = torch.le(gate_output,
                            0.5).to(torch.int32).squeeze(1)
-            #print("Not finish",gate_outputs.size(),glottal_outputs.size())
+
             not_finished = not_finished * dec
             mel_lengths += not_finished
-            #print("att context", hidden_output)
-            #print("Not finish", not_finished,gate_output,dec,"---",gate_output.size())
+
 
 
             # if self.early_stopping and torch.sum(not_finished) == 0:
@@ -249,7 +247,7 @@ class BohaoDecoder(nn.Module):
             #     break
 
             c += 1
-            #print("current loop ", c)
+
             decoder_input = hidden_output
 
         glottal_output, gate_outputs = self.parse_decoder_outputs(
@@ -264,7 +262,6 @@ class TfModel(nn.Module):
                  nlayers: int, dropout: float = 0.5, channels: int = 80,batch_first: bool = True, ag=None):
         super().__init__()
         self.encoder = to_device(nn.Embedding(ntoken, d_hid))
-        #print(self.encoder)
         self.pos_encoder = to_device(PositionalEncoding(d_hid, dropout))
 
         #self.decoder = nn.Embedding(channels, d_hid)
@@ -307,66 +304,43 @@ class TfModel(nn.Module):
 
 
     def forward(self, src,mel_length):
-        #if self.trg_mask is None or self.trg_mask.size(0) != len(trg):
-        #    self.trg_mask = self.generate_square_subsequent_mask(len(trg)).to(trg.device)
 
-        #src_pad_mask = self.make_len_mask(src)
-        #trg_pad_mask = self.make_len_mask(trg)
-
-        #print("SCR shape", src.size())
-        #print("Trg shape", trg.size())
-        #print("src device",src.device)
         src = self.encoder(src)
         src = self.pos_encoder(src)
 
-        #trg = self.decoder(trg)
-        #trg = self.pos_decoder(trg)
 
-        #print("Scr",src.size())
-        #print("Tgt",trg.size())
         glottal_encoder_output = self.transformer_glottal_source_encoder(src)
-        #print("g encoder out", glottal_encoder_output.size())
+
 
         memory_lengths = torch.tensor([x.size(0) for x in glottal_encoder_output])
-        #print("mem len",memory_lengths)
+
         glottal_decoder_output, gate_outputs = self.transformer_glottal_source_decoder(glottal_encoder_output,mel_length)
-        #print("g decoder out", glottal_decoder_output.size())
-        #glottal_output = self.fc_glottal_out(glottal_decoder_output)
+
         glottal_output = glottal_decoder_output
-        #print("g output", glottal_output.size())
+
         output_pressure = glottal_output[:,:,:512]
         output_velocity = glottal_output[:,:,512:1024]   # shape B,times,1+n_fft/2
 
 
-        #print("output pressure size", output_pressure.size())
-        #print("output velocity size", output_velocity.size())
 
-        #output_pressure = output_pressure.permute(0,2,1)
-        #output_velocity = output_velocity.permute(0,2,1)
-        #stft_pressure = self.inversemel_pressure(output_pressure)
-        #stft_velocity = self.inversemel_velocity(output_velocity)
         stft_pressure = output_pressure
         stft_velocity = output_velocity
 
 
-        #print("finish inverse mel",stft_pressure.size(),stft_velocity.size())
-        #stft_velocity = stft_velocity.permute(0,2,1)  # shape B,times, 1+n_ttf/2
-        #stft_pressure = stft_pressure.permute(0,2,1)
+
         chain_matrix_A = glottal_output[:,:,1024:1536]   # shape B,1,0+n_ttf/2
         chain_matrix_B = glottal_output[:,:,1536:2048]
 
-        #print("CCCC",chain_matrix_A.size())
-        #print("PPPP stft",stft_pressure.size())
 
-        #print("SSSSize",chain_matrix_A.size(),chain_matrix_B.size(),stft_pressure.size(),stft_velocity.size())
+
         stft_lips_output_pressure = chain_matrix_A * stft_pressure + chain_matrix_B * stft_velocity
-        #print("Stft after chain",stft_lips_output_pressure.size())
+
         mel_lips_output_pressure = self.mel_pressure(stft_lips_output_pressure.permute(0,2,1))
         mel_lips_output_pressure = mel_lips_output_pressure.permute(0,2,1)
-        #print("mel size",mel_lips_output_pressure.size())
+
         output_mel = self.mic_loss(mel_lips_output_pressure.float())
         output_mel = self.log_mel(output_mel)
-        #print("Lips out put", mel_lips_output_pressure.size())
+
         return output_mel,gate_outputs,output_velocity
 
 
@@ -447,16 +421,11 @@ testset_loader = DataLoader(testset, num_workers=0, shuffle=False,
 
 
 
-# for a in trainset:
-#     print("AAAAAA0", a[0])
-#     print("AAAAAA1", a[1].size())
-#     print("AAAAAA2", a[2])
-#     print("AAAAAA3", len(a))
 
 import librosa
 import librosa.display
 import matplotlib.pyplot as plt
-import copy
+
 
 
 
@@ -507,55 +476,27 @@ def train():
     for i, batch in enumerate(train_loader):
         text_padded, input_lengths, mel_padded, gate_padded, \
         output_lengths, len_x = batch
-        #print("Gate padding",gate_padded)
-        #print("AAAAA",text_padded.size())
+
         x, y, num_items = data_function.batch_to_gpu(batch)
-        #print("XXXX0",x[0].size())
+
         target = y[0].permute(0,2,1) # y[0] is mel
         gate = y[1] # y[1] is gate padding
-        #print("XXXX2", x[2].size(),target.size())
-        #print("YYYYY",y[0].size())
 
-
-        #target = torch.randn(1,1,80)
-
-        #target_fill_zero = torch.zeros(ag.batch_size, 2000 - target.size(1), target.size(2))
-        #target_fill_zero = to_gpu(target_fill_zero).float()
-        #target = torch.cat([target, target_fill_zero], dim=1)
-        #target = to_gpu(target).float()
-
-        #gate_fill_one = torch.zeros(ag.batch_size, 2000 - gate.size(1))
-        #gate_fill_one = to_gpu(gate_fill_one).float()
-        #gate = torch.cat([gate,gate_fill_one],dim=1)
-        #gate = to_gpu(gate).float()
-        #print("Fill zero target ", target.size())
-        #print("Fill ones gate",gate.size())
 
         mel_length = to_gpu(torch.tensor([target.size(1)]))
 
         pred_y_mel, pred_y_gate_output, predict_velocity = model(x[0],mel_length)
 
-        #print("gate", gate.size())
-        #print("pred gate",pred_y_gate_output.size())
-        #pred_y_target = pred_y_mel.permute(0,2,1)
+
         pred_y_target = pred_y_mel
-        #print("Pred_y_mel", pred_y_mel.size())
-        #print("Pred_y_target", pred_y_target.size())
-        #print("Target size",target.size())
-        #print("Y",x[2].size())
 
-        #print(gate)
-        #print(pred_y_gate_output)
-
-
-        #loss = criterion(pred_y_target,target.float())
         loss = criterion(pred_y_target, pred_y_gate_output ,target.float(),gate.float())
-        #loss.requires_grad = True
+
         optimizer.zero_grad()
         loss.backward(retain_graph=True)
-        #torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
+
         optimizer.step()
-        #print("train loss",loss.item())
+
 
         total_loss += loss.item()
         history_train_loss += loss.item()
@@ -569,8 +510,8 @@ def train():
 
 
 
-        if i >0:
-            break
+        #if i >0:
+        #    break
     return history_train_loss/(i+1)
 
 train_loss_list = []
@@ -635,9 +576,10 @@ def val():
 
 
 
-def print_spectrogram(pred_y_mel,gate,ground_truth = False):
+def print_spectrogram(pred_y_mel,gate,ground_truth = False,pic_name = ""):
     pred_y_mel = pred_y_mel.to("cpu").squeeze().detach().numpy().T
-    log_spectro = librosa.amplitude_to_db(pred_y_mel)
+    #log_spectro = librosa.amplitude_to_db(pred_y_mel)
+    log_spectro = pred_y_mel
     print("mel",pred_y_mel.shape)
     gate_dec = torch.ge(gate,
                         0.5).to(torch.int32).squeeze().to("cpu")
@@ -655,10 +597,14 @@ def print_spectrogram(pred_y_mel,gate,ground_truth = False):
     librosa.display.specshow(log_spectro, sr=ag.sampling_rate, x_axis='time', y_axis='hz', hop_length=ag.hop_length,
                              cmap='magma', fmax=80)
     plt.colorbar(label='Decibels')
-    if ground_truth:
-        plt.savefig("v5_groun_truth.png")
+
+    if pic_name:
+        plt.savefig("v5_%s.png"%pic_name)
     else:
-        plt.savefig("v5_test_predict.png")
+        if ground_truth:
+            plt.savefig("v5_groun_truth.png")
+        else:
+            plt.savefig("v5_test_predict.png")
 
 
 
@@ -681,10 +627,11 @@ def tt_dataset():
         pred_y_mel, pred_y_gate_output, predict_velocity = model(x[0],mel_length)
 
         loss = criterion(pred_y_mel, pred_y_gate_output, target.float(), gate.float())
-        print("Test loss", loss.item)
+        print("Test loss", loss.item())
 
         print_spectrogram(pred_y_mel,pred_y_gate_output)
         print_spectrogram(target,gate,ground_truth=True)
+
 
 
         break
