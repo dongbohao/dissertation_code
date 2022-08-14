@@ -81,7 +81,7 @@ ag = Ag(output='out.txt',
         dist_backend='nccl',
         bench_class='',
         n_mel_channels=80,
-        n_frames_per_step=3,
+        n_frames_per_step=1,
         )
 
 
@@ -184,10 +184,10 @@ class BohaoDecoder(nn.Module):
 
         return mel_outputs, gate_outputs
 
-    def decode(self, decoder_input, memory):
+    def decode(self, decoder_input, memory, src_mask = None):
 
 
-        hidden_output = self.transformerdecoder(tgt = decoder_input,memory=memory)
+        hidden_output = self.transformerdecoder(tgt = decoder_input,memory=memory,memory_mask = src_mask)
         glottal_output = self.fc_glottal_out(hidden_output)
 
         gate_prediction = self.gate_layer(hidden_output)
@@ -197,7 +197,7 @@ class BohaoDecoder(nn.Module):
 
         return hidden_output,glottal_output,gate_prediction
 
-    def forward(self, memory, mel_l):
+    def forward(self, memory, mel_l, src_mask = None):
         """ Decoder inference
         PARAMS
         ------
@@ -220,7 +220,7 @@ class BohaoDecoder(nn.Module):
         #while True:
         for cont_index in range(0,mel_l):
             #decoder_input = self.prenet(decoder_input)
-            hidden_output,glottal_output,gate_output = self.decode(decoder_input,memory)
+            hidden_output,glottal_output,gate_output = self.decode(decoder_input,memory,src_mask=src_mask)
 
             if first_iter:
                 glottal_outputs = glottal_output
@@ -303,18 +303,17 @@ class TfModel(nn.Module):
         return (inp == 0).transpose(0, 1)
 
 
-    def forward(self, src,mel_length):
+    def forward(self, src,mel_length, src_mask = None):
 
         src = self.encoder(src)
         src = self.pos_encoder(src)
 
-
-        glottal_encoder_output = self.transformer_glottal_source_encoder(src)
+        glottal_encoder_output = self.transformer_glottal_source_encoder(src,mask=src_mask)
 
 
         memory_lengths = torch.tensor([x.size(0) for x in glottal_encoder_output])
 
-        glottal_decoder_output, gate_outputs = self.transformer_glottal_source_decoder(glottal_encoder_output,mel_length)
+        glottal_decoder_output, gate_outputs = self.transformer_glottal_source_decoder(glottal_encoder_output,mel_length,src_mask=src_mask)
 
         glottal_output = glottal_decoder_output
 
@@ -341,7 +340,7 @@ class TfModel(nn.Module):
         output_mel = self.mic_loss(mel_lips_output_pressure.float())
         output_mel = self.log_mel(output_mel)
 
-        return output_mel,gate_outputs,output_velocity
+        return output_mel,gate_outputs,output_velocity, output_pressure, chain_matrix_A, chain_matrix_B
 
 
 def generate_square_subsequent_mask(sz: int) -> Tensor:
@@ -448,8 +447,8 @@ class Tacotron2Loss(nn.Module):
 
 ntokens = len(vocab)  # size of vocabulary
 print("NNNN",ntokens)
-emsize = 512  # embedding dimension
-d_hid = 512  # dimension of the feedforward network model in nn.TransformerEncoder
+emsize = 128  # embedding dimension
+d_hid = 128  # dimension of the feedforward network model in nn.TransformerEncoder
 nlayers = 2  # number of nn.TransformerEncoderLayer in nn.TransformerEncoder
 nhead = 2  # number of heads in nn.MultiheadAttention
 dropout = 0.2  # dropout probability
@@ -482,10 +481,12 @@ def train():
         target = y[0].permute(0,2,1) # y[0] is mel
         gate = y[1] # y[1] is gate padding
 
+        #src_mask = to_gpu(torch.not_equal(x[0],0).unsqueeze(2))
+        src_mask = None
 
         mel_length = to_gpu(torch.tensor([target.size(1)]))
 
-        pred_y_mel, pred_y_gate_output, predict_velocity = model(x[0],mel_length)
+        pred_y_mel, pred_y_gate_output, predict_velocity, predict_pressure, predict_matrixA, predict_matrixB = model(x[0],mel_length,src_mask = src_mask)
 
 
         pred_y_target = pred_y_mel
@@ -493,7 +494,7 @@ def train():
         loss = criterion(pred_y_target, pred_y_gate_output ,target.float(),gate.float())
 
         optimizer.zero_grad()
-        loss.backward(retain_graph=True)
+        loss.backward()
 
         optimizer.step()
 
@@ -510,8 +511,8 @@ def train():
 
 
 
-        #if i >0:
-        #    break
+        if i >0:
+            break
     return history_train_loss/(i+1)
 
 train_loss_list = []
@@ -624,13 +625,18 @@ def tt_dataset():
         #gate = torch.cat([gate, gate_fill_one], dim=1)
 
         mel_length = to_gpu(torch.tensor([target.size(1)]))
-        pred_y_mel, pred_y_gate_output, predict_velocity = model(x[0],mel_length)
+        pred_y_mel, pred_y_gate_output, predict_velocity, predict_pressure, predict_matrixA, predict_matrixB = model(x[0],mel_length)
 
         loss = criterion(pred_y_mel, pred_y_gate_output, target.float(), gate.float())
         print("Test loss", loss.item())
 
         print_spectrogram(pred_y_mel,pred_y_gate_output)
         print_spectrogram(target,gate,ground_truth=True)
+        print_spectrogram(predict_velocity, gate, pic_name="g_velocity")
+        print_spectrogram(predict_pressure, gate, pic_name="g_pressure")
+        print_spectrogram(predict_matrixA, gate, pic_name="matrix_A")
+        print_spectrogram(predict_matrixB, gate, pic_name="matrix_B")
+
 
 
 
