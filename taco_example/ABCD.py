@@ -1,4 +1,6 @@
 import math
+
+import numpy
 import numpy as np
 import matplotlib.pyplot as plt
 import torch
@@ -64,6 +66,35 @@ chainMatrix = ChainMatrix()
 
 matrix_names = ["A","B","C","D"]
 
+
+def print_fre(stft_list,n_fft=1024,sr=22500,pic_name=""):
+
+
+    ind = list(map(lambda x:x, np.arange(int(n_fft/2))))
+    width = 0.35
+    fig, ax1 = plt.subplots(figsize=(10, 6), dpi=100)
+
+    ax1.bar(ind, stft_list, width, label='Magnitude')
+    #for i, (x, y) in enumerate(zip(ind, frequency_points)):
+    #    ax1.text(x, y, '%.2f' % y, ha='center', va='bottom')
+
+
+    ax1.set_ylabel('magnitude')
+    ax1.set_xlabel('frequency')
+
+    x_ticks_positions = [n for n in range(0, n_fft // 2, n_fft // 16)]
+    x_ticks_labels = [str(sr / 512 * n) + 'Hz' for n in x_ticks_positions]
+    plt.xticks(x_ticks_positions,x_ticks_labels)
+    # if matrix_name == "A" or matrix_name == "D":
+    #     ax1.set_ylim(ymin = 1-6e-4,ymax = 1+6e-4)
+    plt.title('')
+
+    #plt.xticks(ind + width / 2, ('train_accuracy', 'val_accuracy', 'test_accuracy', 'training_time(seconds)'))
+    plt.legend(loc='best')
+    #plt.savefig("%s.png"%,dpi=300)
+    plt.savefig("%s.png"%pic_name,dpi=300)
+
+
 def generate_element_chain_matrix(matrix_name,sample_rate= 22050, n_fft=1024, mel_channels = 80):
     chainMatrix = ChainMatrix()
     matrix_func = chainMatrix.__getattribute__(matrix_name)
@@ -88,6 +119,7 @@ def generate_element_chain_matrix(matrix_name,sample_rate= 22050, n_fft=1024, me
     # plt.legend(loc='best')
     # plt.savefig("%s.png"%matrix_name,dpi=300)
 
+    print_fre(frequency_points[:-1],pic_name=matrix_name)
     m = torch.tensor([[frequency_points]]).float()
     m = to_gpu(m).float()
     print("Chain matrix",m.size())
@@ -145,12 +177,12 @@ def make_chain_matrix(sample_rate= 22050, n_fft=1024, mel_channels = 80):
 
 
 
-tt1 = torch.randn(1,3,5)
-tt2 = torch.randn(5,8)
+tt1 = torch.randn(2,2,5)
+tt2 = torch.randn(2,2,5)
 rr = torch.matmul(tt1,tt2)
 print(rr.size())
 
-# for matrix_name in matrix_names:
+#for matrix_name in matrix_names:
 #     generate_element_chain_matrix(matrix_name)
 
 
@@ -164,3 +196,11 @@ print(rr.size())
 # t = np.arange(256)
 # plt.plot(t, time_domian.real, label='aa')
 # plt.show()
+
+
+
+
+import librosa
+# load the file
+
+#print_fre([])
