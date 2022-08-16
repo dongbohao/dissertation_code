@@ -13,6 +13,7 @@ from ABCD import make_chain_matrix
 import torchmetrics
 from tacotron2_common.layers import LinearNorm,ConvNorm
 from tacotron2_common.utils import to_gpu, get_mask_from_lengths, to_device
+from torch.nn.modules.activation import MultiheadAttention
 
 from torch import save, load, no_grad, LongTensor
 
@@ -97,7 +98,6 @@ def get_zero_frame(tgt):
     return decoder_start_end
 
 
-
 bohaoDecoder_config = {
                        'max_decoder_steps': 2000,
                        'gate_threshold': 0.5,
@@ -113,13 +113,32 @@ class BohaoDecoder(nn.Module):
         self.gate_threshold = gate_threshold
         self.early_stopping = early_stopping
 
-        self.upsample_glottal = torch.nn.ConvTranspose1d(hidden_dim,
-                                                 hidden_dim*2,
-                                                 128, stride=48)
+        #decoder_layers = to_device(TransformerDecoderLayer(d_model, nhead, hidden_dim, dropout, batch_first=True))
+        #self.glottal_decoder = to_device(TransformerDecoder(decoder_layers, nlayers))
 
+        #decoder_layers = to_device(TransformerDecoderLayer(d_model, nhead, hidden_dim, dropout, batch_first=True))
+        #self.chain_matrix_decoder = to_device(TransformerDecoder(decoder_layers, nlayers))
+
+        g_encoder_layers = to_device(TransformerEncoderLayer(d_hid, nhead, d_hid, dropout))
+        self.upsample_glottal_attn = to_device(TransformerEncoder(g_encoder_layers, nlayers))
+
+        c_encoder_layers = to_device(TransformerEncoderLayer(d_hid, nhead, d_hid, dropout))
+        self.upsample_chain_attn = to_device(TransformerEncoder(c_encoder_layers, nlayers))
+
+
+        self.fc_glottal_out = to_device(nn.Linear(hidden_dim, hidden_dim*2))
+
+        self.fc_matrix_out = to_device(nn.Linear(hidden_dim, hidden_dim*2))
+
+        self.glottal_activate = to_device(nn.ReLU())
+        self.chain_matrix_activate = to_device(nn.ReLU())
+
+        self.upsample_glottal = torch.nn.ConvTranspose1d(hidden_dim,
+                                                 hidden_dim,
+                                                 16, stride=12)
         self.upsample_matrix = torch.nn.ConvTranspose1d(hidden_dim,
-                                                         hidden_dim*2,
-                                                         128, stride=48)
+                                                         hidden_dim,
+                                                         16, stride=12)
 
 
     def forward(self, memory, mel_l, src_mask = None):
@@ -134,9 +153,10 @@ class BohaoDecoder(nn.Module):
         alignments: sequence of attention weights from the decoder
         """
 
+
         memory = memory.permute(0,2,1)
         #print("Src ",memory.size())
-        glottal_outputs = self.upsample_glottal(memory)
+        glottal_outputs = self.upsample_glottal(memory)  # B channels T_outs
         #print("glottal size", glottal_outputs.size())
         glottal_outputs = glottal_outputs[:,:,:mel_l]
         #print("glottal size",glottal_outputs.size())
@@ -146,7 +166,29 @@ class BohaoDecoder(nn.Module):
 
 
 
-        return glottal_outputs,chain_matrix
+        #print("G upsampling",glottal_outputs.size())
+        #print(glottal_outputs.permute(0,2,1).size())
+        #glottal_decoder_output = self.glottal_decoder(glottal_outputs.permute(0,2,1),memory.permute(0,2,1))  # B T_outs channels
+        #chain_matrix_output = self.chain_matrix_decoder(chain_matrix.permute(0,2,1),memory.permute(0,2,1))
+
+        #print("glottal_outputs",glottal_outputs.size(),"chain_matrix",chain_matrix.size())
+        #glottal_decoder_output = glottal_outputs.permute(0,2,1)
+        #chain_matrix_output = chain_matrix.permute(0,2,1)
+
+        #print("TTTTT",glottal_outputs.size(),chain_matrix.size())
+
+        glottal_attn_output = self.upsample_glottal_attn(glottal_outputs.permute(0,2,1))
+        chain_attn_output = self.upsample_chain_attn(chain_matrix.permute(0,2,1))
+
+        #print("GGGG",glottal_attn_output.size(),chain_attn_output.size())
+
+        glottal_decoder_output = self.glottal_activate(self.fc_glottal_out(glottal_attn_output))
+
+        chain_matrix_output = self.chain_matrix_activate(self.fc_matrix_out(chain_attn_output))
+
+
+        #print("GGGGGGGGGGGGGGGGGGG",glottal_decoder_output.size(),chain_matrix_output.size())
+        return glottal_decoder_output.permute(0,2,1),chain_matrix_output.permute(0,2,1)
 
 
 
@@ -274,9 +316,9 @@ from torchtext.data.utils import get_tokenizer
 from torchtext.vocab import build_vocab_from_iterator
 
 tokenizer = get_tokenizer('basic_english')
-vocab = build_vocab_from_iterator(map(tokenizer, text_iter(trainset_rawtext)), specials=['<unk>'])
-vocab.set_default_index(vocab['<unk>'])
-
+#vocab = build_vocab_from_iterator(map(tokenizer, text_iter(trainset_rawtext)), specials=['<unk>'])
+#vocab.set_default_index(vocab['<unk>'])
+vocab = None
 trainset = data_function.TextMelLoader(ag.dataset_path, ag.training_files, ag, vocab = vocab, tokenizer=tokenizer)
 
 collate_fn = data_function.get_collate_function(
@@ -325,7 +367,8 @@ class Tacotron2Loss(nn.Module):
 
 
 
-ntokens = len(vocab)  # size of vocabulary
+#ntokens = len(vocab)  # size of vocabulary
+ntokens = 148
 print("NNNN",ntokens)
 emsize = 512  # embedding dimension
 d_hid = 512  # dimension of the feedforward network model in nn.TransformerEncoder
@@ -340,32 +383,37 @@ criterion = Tacotron2Loss()
 lr = 0.01  # learning rate
 optimizer = torch.optim.SGD(model.parameters(), lr=lr)
 scheduler = torch.optim.lr_scheduler.StepLR(optimizer, 1, gamma=0.95)
-log_interval = 10
-
+log_interval = 50
+import time
 
 
 def train():
     #model.train()
     total_loss = 0.
     history_train_loss = 0.
+    total_time = 0.
     train_loader = DataLoader(trainset, num_workers=0, shuffle=shuffle,
                               sampler=train_sampler,
                               batch_size=ag.batch_size, pin_memory=False,
                               drop_last=True, collate_fn=collate_fn)
+
     for i, batch in enumerate(train_loader):
+        a_time = time.time()
         text_padded, input_lengths, mel_padded, gate_padded, \
         output_lengths, len_x = batch
+
 
         x, y, num_items = data_function.batch_to_gpu(batch)
 
         target = y[0].permute(0,2,1) # y[0] is mel
         gate = y[1] # y[1] is gate padding
-        #print("Target ",target.size())
+        #print("Target ",target.size(),"text size",x[0].size())
 
         #src_mask = to_gpu(torch.not_equal(x[0],0).unsqueeze(2))
         src_mask = None
 
         mel_length = to_gpu(torch.tensor([target.size(1)]))
+
 
         pred_y_mel, predict_velocity, predict_pressure, predict_matrixA, predict_matrixB = model(x[0],mel_length,src_mask = src_mask)
 
@@ -374,22 +422,26 @@ def train():
 
         #print("pred ",pred_y_target.size())
         loss = criterion(pred_y_target,target.float())
-
+        ls = loss.item()
         optimizer.zero_grad()
         loss.backward()
 
         optimizer.step()
 
 
-        total_loss += loss.item()
-        history_train_loss += loss.item()
+
+        b_time = time.time()
+        total_loss += ls
+        history_train_loss += ls
+        total_time += (b_time - a_time)
         if i % log_interval == 0 and i > 0:
             lr = scheduler.get_last_lr()[0]
             cur_loss = total_loss / log_interval
             ppl = math.exp(cur_loss)
             print(f'lr {lr:02.2f} | '
-                  f'train loss {cur_loss:5.2f} | ppl {ppl:8.2f}')
+                  f'train loss {cur_loss:5.2f} | ppl {ppl:8.2f}',"time cost %s"%(total_time), "total %s/%s"%(i,int(2500/ag.batch_size)))
             total_loss = 0
+            total_time = 0
 
 
 
@@ -404,7 +456,9 @@ val_loss_list = []
 # validation
 def val():
     for e in range(0,ag.epochs):
+        c_time = time.time()
         train_loss = train()
+        d_time = time.time()
         val_loss = 0.
         # valset_loader = DataLoader(valset, num_workers=0, shuffle=shuffle,
         #                            sampler=train_sampler,
@@ -443,6 +497,7 @@ def val():
 
         print("Train loss list", train_loss_list)
         print("Val loss list", val_loss_list)
+        print("Epoch time cost", (d_time - c_time))
 
         checkpoint_path = "checkpoint_v8.pt"
         torch.save({

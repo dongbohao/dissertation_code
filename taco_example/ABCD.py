@@ -177,10 +177,10 @@ def make_chain_matrix(sample_rate= 22050, n_fft=1024, mel_channels = 80):
 
 
 
-tt1 = torch.randn(2,2,5)
-tt2 = torch.randn(2,2,5)
-rr = torch.matmul(tt1,tt2)
-print(rr.size())
+# tt1 = torch.randn(2,2,5)
+# tt2 = torch.randn(2,2,5)
+# rr = torch.matmul(tt1,tt2)
+# print(rr.size())
 
 #for matrix_name in matrix_names:
 #     generate_element_chain_matrix(matrix_name)

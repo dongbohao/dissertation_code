@@ -30,6 +30,7 @@ import torch.utils.data
 
 import tacotron2_common.layers as layers
 from tacotron2_common.utils import load_wav_to_torch, load_filepaths_and_text, to_gpu
+from text import text_to_sequence
 
 
 class TextMelLoader(torch.utils.data.Dataset):
@@ -54,7 +55,7 @@ class TextMelLoader(torch.utils.data.Dataset):
 
     def get_mel_text_pair(self, audiopath_and_text):
         # separate filename and text
-        # print("current path",audiopath_and_text)
+        #print("current path",audiopath_and_text)
         audiopath, text = audiopath_and_text[0], audiopath_and_text[1]
         len_text = len(text)
         text = self.get_text(text)
@@ -81,17 +82,17 @@ class TextMelLoader(torch.utils.data.Dataset):
         return melspec
 
     def get_text(self, text):
-        #text_norm = torch.IntTensor(text_to_sequence(text, self.text_cleaners))
-        #return text_norm
-        if self.vocab and self.tokenizer:
-            if self.print_raw_text:
-                print("Raw text", text)
-            text_norm = torch.tensor(self.vocab(self.tokenizer(text)), dtype=torch.long)
-            #print("shape", text_norm.size())
-            #print("Norm text",text_norm)
-            return text_norm
-        else:
-            return text
+        text_norm = torch.IntTensor(text_to_sequence(text, self.text_cleaners))
+        return text_norm
+        # if self.vocab and self.tokenizer:
+        #     if self.print_raw_text:
+        #         print("Raw text", text)
+        #     text_norm = torch.tensor(self.vocab(self.tokenizer(text)), dtype=torch.long)
+        #     #print("shape", text_norm.size())
+        #     #print("Norm text",text_norm)
+        #     return text_norm
+        # else:
+        #     return text
 
     def __getitem__(self, index):
         return self.get_mel_text_pair(self.audiopaths_and_text[index])
