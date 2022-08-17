@@ -65,8 +65,10 @@ class LengthRegulator(nn.Module):
         alignment = torch.zeros(duration_predictor_output.size(0),
                                 expand_max_len,
                                 duration_predictor_output.size(1)).numpy()
+        #print("AAA222", alignment.shape,expand_max_len,duration_predictor_output.size())
         alignment = create_alignment(alignment,
                                      duration_predictor_output.cpu().numpy())
+        #print("AAA111", alignment.shape)
         alignment = torch.from_numpy(alignment).to(device)
 
         #print("AAA",alignment.size(),x.size())
@@ -78,13 +80,15 @@ class LengthRegulator(nn.Module):
 
     def forward(self, x, alpha=1.0, target=None, mel_max_length=None):
         duration_predictor_output = self.duration_predictor(x)
-
+        #print("FFF1",duration_predictor_output.size())
         if target is not None:
+            #print("FFFF2", target.size())
             output = self.LR(x, target, mel_max_length=mel_max_length)
             return output, duration_predictor_output
         else:
             duration_predictor_output = (
                 (duration_predictor_output + 0.5) * alpha).int()
+
             output = self.LR(x, duration_predictor_output)
             mel_pos = torch.stack(
                 [torch.Tensor([i+1 for i in range(output.size(1))])]).long().to(device)
@@ -126,8 +130,11 @@ class DurationPredictor(nn.Module):
 
     def forward(self, encoder_output):
         out = self.conv_layer(encoder_output)
+        #print("OOOO1",out.size(),encoder_output.size())
         out = self.linear_layer(out)
+        #print("OOOO2",out.size())
         out = self.relu(out)
+        #print("000003",out.size())
         out = out.squeeze()
         if not self.training:
             out = out.unsqueeze(0)

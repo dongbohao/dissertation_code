@@ -49,7 +49,7 @@ ag = Ag(output='out.txt',
         anneal_factor=0.1,
         config_file=None,
         seed=None,
-        epochs=30,
+        epochs=2,
         epochs_per_checkpoint=50,
         checkpoint_path='',
         resume_from_last=False,
@@ -308,6 +308,7 @@ nhead = 2  # number of heads in nn.MultiheadAttention
 dropout = 0.2  # dropout probability
 #model = TransformerModel(ntokens, emsize, nhead, d_hid, nlayers, dropout, ag.n_mel_channels).cuda()
 model = to_device(FastSpeech())
+model = model.train()
 
 num_param = utils.get_param_num(model)
 #criterion = nn.MSELoss()
@@ -330,6 +331,12 @@ from data_function import get_data_to_buffer,BufferDataset,collate_fn_tensor
 buffer = get_data_to_buffer()
 dataset = BufferDataset(buffer)
 
+training_loader = DataLoader(dataset,
+                                 batch_size=hp.batch_expand_size * hp.batch_size,
+                                 shuffle=True,
+                                 collate_fn=collate_fn_tensor,
+                                 drop_last=True,
+                                 num_workers=0)
 
 def train():
     #model.train()
@@ -337,14 +344,9 @@ def train():
     history_train_loss = 0.
     total_time = 0.
 
-    training_loader = DataLoader(dataset,
-                                 batch_size=hp.batch_expand_size * hp.batch_size,
-                                 shuffle=True,
-                                 collate_fn=collate_fn_tensor,
-                                 drop_last=True,
-                                 num_workers=0)
 
-    #print("Epoch size", len(training_loader) * hp.batch_expand_size)
+
+    print("Epoch size", len(training_loader) * hp.batch_expand_size)
     for i, batchs in enumerate(training_loader):
         for j, db in enumerate(batchs):
             a_time = time.time()
@@ -354,6 +356,11 @@ def train():
             mel_pos = db["mel_pos"].long().to(device)
             src_pos = db["src_pos"].long().to(device)
             max_mel_len = db["mel_max_len"]
+
+            #print("character", character.size())
+            #print("duration",duration.size())
+            if not character.size(1)==duration.size(1):
+                continue
 
             mel_output, mel_postnet_output, duration_predictor_output, stft_pressure,stft_velocity,chainA,chainB = model(character,
                                                                               src_pos,
@@ -381,7 +388,7 @@ def train():
             nn.utils.clip_grad_norm_(
                 model.parameters(), hp.grad_clip_thresh)
             scheduled_optim.step_and_update_lr()
-
+            #scheduled_optim.step_and_update_lr_frozen(0.0001)
 
 
 
@@ -390,13 +397,13 @@ def train():
             history_train_loss += m_l
             total_time += (b_time - a_time)
             if j % log_interval == 0 and j > 0:
-                print("mel loss",m_l,"time cost",(b_time-a_time))
+                print("mel loss",m_l,"time cost",(b_time-a_time),"current lr",scheduled_optim.get_learning_rate())
                 ttl = 0
                 total_time = 0
 
 
 
-        #if i >=0:
+        #if i >=50:
         #    break
     return history_train_loss/hp.batch_expand_size/(i+1)
 
