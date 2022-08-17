@@ -43,3 +43,7 @@ log_step = 5
 clear_Time = 20
 
 batch_expand_size = 32
+
+import torch
+#device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+device = torch.device('cpu')

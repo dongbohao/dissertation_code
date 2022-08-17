@@ -30,7 +30,7 @@ print(torch.__version__)
 print("Cuda staus",torch.cuda.is_available())
 print("Device",torch.cuda.get_device_name())
 device = torch.device('cuda'if torch.cuda.is_available()else 'cpu')
-
+#device = torch.device('cpu')
 class Ag():
     def __init__(self,**kargs):
         self.kargs = kargs
@@ -97,9 +97,7 @@ from transformer.Models import Encoder, Decoder
 from transformer.Layers import Linear, PostNet
 from modules import LengthRegulator, CBHG
 import torchaudio
-
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
+device = hp.device
 
 class FastSpeech(nn.Module):
     """ FastSpeech """
@@ -130,6 +128,7 @@ class FastSpeech(nn.Module):
 
     def mask_tensor(self, mel_output, position, mel_max_length):
         lengths = torch.max(position, -1)[0]
+        #print("TTTT",lengths.device,mel_max_length.device)
         mask = ~utils.get_mask_from_lengths(lengths, max_len=mel_max_length)
         mask = mask.unsqueeze(-1).expand(-1, -1, mel_output.size(-1))
         return mel_output.masked_fill(mask, 0.)
@@ -387,8 +386,8 @@ def train():
             total_loss.backward()
             nn.utils.clip_grad_norm_(
                 model.parameters(), hp.grad_clip_thresh)
-            scheduled_optim.step_and_update_lr()
-            #scheduled_optim.step_and_update_lr_frozen(0.0001)
+            #scheduled_optim.step_and_update_lr()
+            scheduled_optim.step_and_update_lr_frozen(5e-05)
 
 
 
@@ -523,8 +522,8 @@ def tt_dataset():
         if i >= 0:
             break
 
-val()
-tt_dataset()
+#val()
+#tt_dataset()
 
 
 

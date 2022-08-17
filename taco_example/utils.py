@@ -6,6 +6,7 @@ import os
 
 import hparams
 
+device = hparams.device
 
 def process_text(train_text_path):
     with open(train_text_path, "r", encoding="utf-8") as f:
@@ -25,7 +26,7 @@ def get_mask_from_lengths(lengths, max_len=None):
     if max_len == None:
         max_len = torch.max(lengths).item()
 
-    ids = torch.arange(0, max_len, out=torch.cuda.LongTensor(max_len))
+    ids = torch.arange(0, max_len, out=torch.LongTensor(max_len).to(device))
     mask = (ids < lengths.unsqueeze(1)).bool()
 
     return mask

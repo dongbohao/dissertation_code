@@ -11,8 +11,7 @@ import math
 import hparams as hp
 import utils
 
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
+device = hp.device
 
 def get_sinusoid_encoding_table(n_position, d_hid, padding_idx=None):
     ''' Sinusoid position encoding table '''
@@ -68,10 +67,10 @@ class LengthRegulator(nn.Module):
         #print("AAA222", alignment.shape,expand_max_len,duration_predictor_output.size())
         alignment = create_alignment(alignment,
                                      duration_predictor_output.cpu().numpy())
-        #print("AAA111", alignment.shape)
+        #print("AAA111", alignment.device)
         alignment = torch.from_numpy(alignment).to(device)
 
-        #print("AAA",alignment.size(),x.size())
+        #print("AAA",alignment.device,x.device)
         output = alignment @ x
         if mel_max_length:
             output = F.pad(
