@@ -6,12 +6,12 @@ text_cleaners = ['english_cleaners']
 vocab_size = 300
 max_seq_len = 3000
 
-encoder_dim = 1024
+encoder_dim = 2048
 encoder_n_layer = 4
 encoder_head = 2
 encoder_conv1d_filter_size = 1024
 
-decoder_dim = 1024
+decoder_dim = 2048
 decoder_n_layer = 4
 decoder_head = 2
 decoder_conv1d_filter_size = 1024
@@ -29,7 +29,7 @@ logger_path = "./logger"
 mel_ground_truth = "./mels"
 alignment_path = "./alignments"
 
-batch_size = 2
+batch_size = 1
 epochs = 2000
 n_warm_up_step = 4000
 

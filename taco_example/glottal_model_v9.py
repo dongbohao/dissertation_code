@@ -1,21 +1,10 @@
-import math
-from typing import Tuple
+
 import numpy as np
 import torch
-from torch import nn, Tensor
-import torch.nn.functional as F
-from torch.nn import TransformerEncoder, TransformerEncoderLayer
-from torch.nn import TransformerDecoder, TransformerDecoderLayer
-from torch.utils.data import dataset
-import data_function
-import torchaudio
-from ABCD import make_chain_matrix
-import torchmetrics
-from tacotron2_common.layers import LinearNorm,ConvNorm
-from tacotron2_common.utils import to_gpu, get_mask_from_lengths, to_device
-from torch.nn.modules.activation import MultiheadAttention
 
-from torch import save, load, no_grad, LongTensor
+import data_function
+
+
 
 ## https://pytorch.org/tutorials/beginner/transformer_tutorial.html
 ## https://jalammar.github.io/illustrated-transformer/
@@ -29,7 +18,6 @@ print(torch.__version__)
 #device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 print("Cuda staus",torch.cuda.is_available())
 print("Device",torch.cuda.get_device_name())
-device = torch.device('cuda'if torch.cuda.is_available()else 'cpu')
 #device = torch.device('cpu')
 class Ag():
     def __init__(self,**kargs):
@@ -115,6 +103,9 @@ class FastSpeech(nn.Module):
         self.velocity_linear = Linear(512, 512)
         self.chainA_linear = Linear(512, 512)
         self.chainB_linear = Linear(512, 512)
+        self.chainC_linear = Linear(512, 512)
+        self.chainD_linear = Linear(512, 512)
+        self.decoder_linear = Linear(2048,1024)
         self.melout_linear = Linear(80, 80)
         self.mel_pressure = torchaudio.transforms.MelScale(n_stft=512,
                                                                      n_mels=80,
@@ -145,6 +136,7 @@ class FastSpeech(nn.Module):
 
             #print("Length out", length_regulator_output.size(),duration_predictor_output.size())
             decoder_output = self.decoder(length_regulator_output, mel_pos)
+            decoder_output = self.decoder_linear(decoder_output)
             #print("Decoder out", decoder_output.size())
             #mel_output = self.mel_linear(decoder_output)
 
@@ -159,6 +151,10 @@ class FastSpeech(nn.Module):
             #print()
             chainA = self.chainA_linear(decoder_output1[:,:,:512])
             chainB = self.chainB_linear(decoder_output1[:,:,512:1024])
+            chainC = self.chainC_linear(decoder_output1[:, :, 1024:1536])
+            chainD = self.chainD_linear(decoder_output1[:, :, 1536:2048])
+
+
 
             stft_out = stft_pressure * chainA + stft_velocity * chainB
 
@@ -306,7 +302,7 @@ nlayers = 2  # number of nn.TransformerEncoderLayer in nn.TransformerEncoder
 nhead = 2  # number of heads in nn.MultiheadAttention
 dropout = 0.2  # dropout probability
 #model = TransformerModel(ntokens, emsize, nhead, d_hid, nlayers, dropout, ag.n_mel_channels).cuda()
-model = to_device(FastSpeech())
+model = FastSpeech().to(device)
 model = model.train()
 
 num_param = utils.get_param_num(model)
@@ -426,7 +422,7 @@ def val():
         print("Val loss list", val_loss_list)
         print("Epoch time cost", (d_time - c_time))
 
-        checkpoint_path = "checkpoint_v9.pt"
+        checkpoint_path = "checkpoint_v91.pt"
         torch.save({
             'epoch': e,
             'model_state_dict': model.state_dict(),
@@ -457,12 +453,12 @@ def print_spectrogram(pred_y_mel,ground_truth = False,pic_name = ""):
     plt.colorbar(label='Decibels')
 
     if pic_name:
-        plt.savefig("v9_%s.png"%pic_name)
+        plt.savefig("v91_%s.png"%pic_name)
     else:
         if ground_truth:
-            plt.savefig("v9_groun_truth.png")
+            plt.savefig("v91_groun_truth.png")
         else:
-            plt.savefig("v9_test_predict.png")
+            plt.savefig("v91_test_predict.png")
 
 
 
@@ -522,8 +518,8 @@ def tt_dataset():
         if i >= 0:
             break
 
-#val()
-#tt_dataset()
+val()
+tt_dataset()
 
 
 
