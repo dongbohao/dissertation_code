@@ -420,7 +420,7 @@ def get_prior_phoneme_sepctrogram_info(top_n=2500):
 
 def get_data_to_buffer():
     buffer = list()
-    text = process_text(os.path.join("data", "train.txt"))
+    text = process_text(os.path.join("data", hparams.train_file))
     a_time = time.time()
     stft_dict = get_prior_phoneme_sepctrogram_info(top_n=len(text))
     b_time = time.time()
@@ -451,4 +451,4 @@ def get_data_to_buffer():
     return buffer
 
 
-get_prior_phoneme_sepctrogram_info(top_n=1)
+#get_prior_phoneme_sepctrogram_info(top_n=1)

@@ -14,7 +14,7 @@ model = FastSpeech().cpu()
 model = model.train()
 
 #checkpoint = torch.load(r"C:\Users\xelloss\Downloads\checkpoint_v5_10ep_lr1-3.pt")
-checkpoint = torch.load(r"checkpoint_v9.pt",map_location=device)
+checkpoint = torch.load(r"checkpoint_v9_vv.pt",map_location=device)
 model.load_state_dict(checkpoint['model_state_dict'])
 optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
 epoch = checkpoint['epoch']
@@ -60,10 +60,10 @@ def print_time_domain(stft,n_fft=1024,sr=22500,win_length=1024,hop_length =256,p
     plt.legend(loc='best')
     #plt.savefig("%s.png"%,dpi=300)
     #plt.show()
-    plt.savefig("v9_%s.png"%pic_name)
+    plt.savefig("v9_vv_%s.png"%pic_name)
 
 
-def print_fft(stft):
+def print_fft(stft,pic_name=""):
     stft = stft.to("cpu").squeeze().detach().numpy().T
     stft = stft[:,:1].flatten()
     print(stft.shape)
@@ -74,8 +74,7 @@ def print_fft(stft):
     plt.xlabel("Frequence")
     plt.ylabel("Magnitude")
     plt.grid(True)
-    pic_name = "volume_velocity_fft"
-    plt.savefig("v9_%s.png" % pic_name)
+    plt.savefig("v9_vv_%s.png" % pic_name)
 
 from glottal_flow import get_torch_fft
 
@@ -88,7 +87,8 @@ def tt_dataset():
             mel_pos = db["mel_pos"].long().to("cpu")
             src_pos = db["src_pos"].long().to("cpu")
             max_mel_len = db["mel_max_len"]
-            volume_velocity_target = get_torch_fft(mel_target.size(0), mel_target.size(1), 512).float().to("cpu")
+            volume_velocity_target = db["stft_volume_velocity"].float().to(device)
+            #volume_velocity_target = get_torch_fft(mel_target.size(0), mel_target.size(1), 512).float().to("cpu")
 
             print(mel_target.device)
 
@@ -117,8 +117,17 @@ def tt_dataset():
 
             #print_spectrogram(stft_pressure, pic_name="g_pressure_%s"%i)
             stft_velocity = stft_velocity[:1,:,:]
-            print_time_domain(stft_velocity,pic_name="velocity_timedomain")
-            print_fft(stft_velocity)
+            print_time_domain(stft_velocity,pic_name="velocity_timedomain_predict")
+            print_fft(stft_velocity,pic_name = "velocity_fft_predict")
+
+            volume_velocity_target = volume_velocity_target[:1, :, :]
+            print_time_domain(volume_velocity_target, pic_name="velocity_timedomain_target")
+            print_fft(volume_velocity_target,pic_name="velocity_fft_target")
+
+            print_spectrogram(volume_velocity_target, pic_name="g_velocity_target_%s" % i)
+
+            print_spectrogram(torch.abs(stft_velocity), pic_name="g_velocity_abs_%s" % i)
+
             #print_spectrogram(stft_velocity, pic_name="g_velocity_%s"%i)
             chainA = chainA[:1,:,:]
             #print_spectrogram(chainA, pic_name="matrix_A_%s"%i)

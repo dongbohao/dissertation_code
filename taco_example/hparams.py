@@ -133,6 +133,8 @@ phoneme_config = {"vowel":{"O_q":0.8,
                            "t_n":0.8*1/125 * 1/3},
                   }
 
+train_file = "train.txt"
+#train_file = "train_mini.txt"
 
 import torch
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')

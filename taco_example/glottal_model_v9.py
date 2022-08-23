@@ -1,36 +1,23 @@
-import math
-from typing import Tuple
 import numpy as np
-import torch
-from torch import nn, Tensor
-import torch.nn.functional as F
-from torch.nn import TransformerEncoder, TransformerEncoderLayer
-from torch.nn import TransformerDecoder, TransformerDecoderLayer
-from torch.utils.data import dataset
 import data_function
-import torchaudio
-from ABCD import make_chain_matrix
-import torchmetrics
-from tacotron2_common.layers import LinearNorm,ConvNorm
-from tacotron2_common.utils import to_gpu, get_mask_from_lengths, to_device
-from torch.nn.modules.activation import MultiheadAttention
-
-from torch import save, load, no_grad, LongTensor
+from tacotron2_common.utils import to_device
 from glottal_flow import get_torch_fft
-
-## https://pytorch.org/tutorials/beginner/transformer_tutorial.html
-## https://jalammar.github.io/illustrated-transformer/
-
-
+import torch
+import torch.nn as nn
+import hparams as hp
+import utils
+from transformer.Models import Encoder, Decoder
+from transformer.Layers import Linear, PostNet
+from modules import LengthRegulator, CBHG
+import torchaudio
+device = hp.device
 
 # set seed
 np.random.seed(61112)
 torch.manual_seed(61112)
 print(torch.__version__)
-#device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 print("Cuda staus",torch.cuda.is_available())
 print("Device",torch.cuda.get_device_name())
-device = torch.device('cuda'if torch.cuda.is_available()else 'cpu')
 #device = torch.device('cpu')
 class Ag():
     def __init__(self,**kargs):
@@ -50,7 +37,7 @@ ag = Ag(output='out.txt',
         anneal_factor=0.1,
         config_file=None,
         seed=None,
-        epochs=2,
+        epochs=3,
         epochs_per_checkpoint=50,
         checkpoint_path='',
         resume_from_last=False,
@@ -87,18 +74,6 @@ ag = Ag(output='out.txt',
         n_frames_per_step=1,
         )
 
-
-
-import torch
-import torch.nn as nn
-import hparams as hp
-import utils
-
-from transformer.Models import Encoder, Decoder
-from transformer.Layers import Linear, PostNet
-from modules import LengthRegulator, CBHG
-import torchaudio
-device = hp.device
 
 class FastSpeech(nn.Module):
     """ FastSpeech """
@@ -297,7 +272,7 @@ class Tacotron2Loss(nn.Module):
 
         mel_postnet_loss = 0
         duration_predictor_loss = 0
-        volume_velocity_loss = 10*self.mse_loss(volume_velocity_predicted,volume_velocity_target)
+        volume_velocity_loss = 500*self.mse_loss(volume_velocity_predicted,volume_velocity_target)
 
         return mel_loss, mel_postnet_loss, duration_predictor_loss,volume_velocity_loss
 
@@ -520,6 +495,10 @@ def tt_dataset():
             print_spectrogram(stft_pressure, pic_name="g_pressure_%s"%i)
             stft_velocity = stft_velocity[:1,:,:]
             print_spectrogram(stft_velocity, pic_name="g_velocity_%s"%i)
+
+            print_spectrogram(torch.abs(stft_pressure), pic_name="g_pressure_abs_%s" % i)
+            print_spectrogram(torch.abs(stft_velocity), pic_name="g_velocity_abs_%s" % i)
+
             chainA = chainA[:1,:,:]
             print_spectrogram(chainA, pic_name="matrix_A_%s"%i)
             chainB = chainB[:1,:,:]
