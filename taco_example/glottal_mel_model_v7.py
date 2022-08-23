@@ -59,7 +59,7 @@ ag = Ag(output='out.txt',
         learning_rate=0.001,
         weight_decay=1e-06,
         grad_clip_thresh=1.0,
-        batch_size=2,
+        batch_size=1,
         grad_clip=5.0,
         load_mel_from_disk=True,
         training_files='filelists/ljs_mel_text_train_subset_2500_filelist.txt',
@@ -562,7 +562,7 @@ def train():
 
 
 
-        if i >200:
+        if i >100:
             break
     return history_train_loss/(i+1)
 
@@ -683,8 +683,8 @@ def tt_dataset():
 
         break
 
-val()
-tt_dataset()
+#val()
+#tt_dataset()
 
 
 

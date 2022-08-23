@@ -16,6 +16,7 @@ from tacotron2_common.utils import to_gpu, get_mask_from_lengths, to_device
 from torch.nn.modules.activation import MultiheadAttention
 
 from torch import save, load, no_grad, LongTensor
+from glottal_flow import get_torch_fft
 
 ## https://pytorch.org/tutorials/beginner/transformer_tutorial.html
 ## https://jalammar.github.io/illustrated-transformer/
@@ -285,16 +286,20 @@ class Tacotron2Loss(nn.Module):
         self.mse_loss = nn.MSELoss()
         self.l1_loss = nn.L1Loss()
 
-    def forward(self, mel, mel_postnet, duration_predicted, mel_target, duration_predictor_target):
+    def forward(self, mel, mel_postnet, duration_predicted, mel_target, duration_predictor_target, volume_velocity_target,volume_velocity_predicted):
         mel_target.requires_grad = False
         mel_loss = self.mse_loss(mel, mel_target)
-        mel_postnet_loss = self.mse_loss(mel_postnet, mel_target)
+        #mel_postnet_loss = self.mse_loss(mel_postnet, mel_target)
 
-        duration_predictor_target.requires_grad = False
-        duration_predictor_loss = self.l1_loss(duration_predicted,
-                                               duration_predictor_target.float())
+        #duration_predictor_target.requires_grad = False
+        #duration_predictor_loss = self.l1_loss(duration_predicted,
+        #                                       duration_predictor_target.float())
 
-        return mel_loss, mel_postnet_loss, duration_predictor_loss
+        mel_postnet_loss = 0
+        duration_predictor_loss = 0
+        volume_velocity_loss = self.mse_loss(volume_velocity_predicted,volume_velocity_target)
+
+        return mel_loss, mel_postnet_loss, duration_predictor_loss,volume_velocity_loss
 
 
 #ntokens = len(vocab)  # size of vocabulary
@@ -355,6 +360,8 @@ def train():
             mel_pos = db["mel_pos"].long().to(device)
             src_pos = db["src_pos"].long().to(device)
             max_mel_len = db["mel_max_len"]
+            #volume_velocity_target = get_torch_fft(mel_target.size(0), mel_target.size(1), 512).float().to(device)
+            volume_velocity_target = db["stft_volume_velocity"].float().to(device)
 
             #print("character", character.size())
             #print("duration",duration.size())
@@ -368,19 +375,24 @@ def train():
                                                                               length_target=duration)
 
             # Cal Loss
-            mel_loss, mel_postnet_loss, duration_loss = criterion(mel_output,
+            mel_loss, mel_postnet_loss, duration_loss, volume_velocity_loss = criterion(mel_output,
                                                                         mel_postnet_output,
                                                                         duration_predictor_output,
                                                                         mel_target,
-                                                                        duration)
+                                                                        duration,
+                                                                        volume_velocity_target,
+                                                                        stft_velocity        )
             total_loss = mel_loss + mel_postnet_loss + duration_loss
 
             # Logger
             t_l = total_loss.item()
             m_l = mel_loss.item()
-            m_p_l = mel_postnet_loss.item()
-            d_l = duration_loss.item()
+            #m_p_l = mel_postnet_loss.item()
+            #d_l = duration_loss.item()
 
+            m_p_l = 0
+            d_l = 0
+            v_v = volume_velocity_loss.item()
             ls = t_l
 
             total_loss.backward()
@@ -396,13 +408,13 @@ def train():
             history_train_loss += m_l
             total_time += (b_time - a_time)
             if j % log_interval == 0 and j > 0:
-                print("mel loss",m_l,"time cost",(b_time-a_time),"current lr",scheduled_optim.get_learning_rate())
+                print("mel loss",m_l,"time cost",(b_time-a_time),"current lr",scheduled_optim.get_learning_rate(),"v_v_loss",v_v)
                 ttl = 0
                 total_time = 0
 
 
 
-        #if i >=50:
+        #if i >=0:
         #    break
     return history_train_loss/hp.batch_expand_size/(i+1)
 
@@ -426,7 +438,7 @@ def val():
         print("Val loss list", val_loss_list)
         print("Epoch time cost", (d_time - c_time))
 
-        checkpoint_path = "checkpoint_v9.pt"
+        checkpoint_path = "checkpoint_v9_vv_0.pt"
         torch.save({
             'epoch': e,
             'model_state_dict': model.state_dict(),
@@ -457,12 +469,12 @@ def print_spectrogram(pred_y_mel,ground_truth = False,pic_name = ""):
     plt.colorbar(label='Decibels')
 
     if pic_name:
-        plt.savefig("v9_%s.png"%pic_name)
+        plt.savefig("v9_vv_%s.png"%pic_name)
     else:
         if ground_truth:
-            plt.savefig("v9_groun_truth.png")
+            plt.savefig("v9_vv_groun_truth.png")
         else:
-            plt.savefig("v9_test_predict.png")
+            plt.savefig("v9_vv_test_predict.png")
 
 
 
@@ -482,6 +494,7 @@ def tt_dataset():
             mel_pos = db["mel_pos"].long().to(device)
             src_pos = db["src_pos"].long().to(device)
             max_mel_len = db["mel_max_len"]
+            volume_velocity_target = get_torch_fft(mel_target.size(0), mel_target.size(1), 512).float().to(device)
 
             mel_output, mel_postnet_output, duration_predictor_output, stft_pressure,stft_velocity,chainA,chainB = model(character,
                                                                               src_pos,
@@ -490,11 +503,11 @@ def tt_dataset():
                                                                               length_target=duration)
 
             # Cal Loss
-            mel_loss, mel_postnet_loss, duration_loss = criterion(mel_output,
+            mel_loss, mel_postnet_loss, duration_loss, volume_velocity_loss = criterion(mel_output,
                                                                   mel_postnet_output,
                                                                   duration_predictor_output,
                                                                   mel_target,
-                                                                  duration)
+                                                                  duration,volume_velocity_target,stft_velocity)
 
             print("Test loss", mel_loss.item())
             mel_output = mel_output[:1,:,:]
@@ -522,8 +535,8 @@ def tt_dataset():
         if i >= 0:
             break
 
-#val()
-#tt_dataset()
+val()
+tt_dataset()
 
 
 

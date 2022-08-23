@@ -9,10 +9,10 @@ from torch.nn import TransformerDecoder, TransformerDecoderLayer
 from torch.utils.data import dataset
 import data_function
 import torchaudio
-from taco_example.ABCD import make_chain_matrix
+from ABCD import make_chain_matrix
 import torchmetrics
-from taco_example.tacotron2_common.layers import LinearNorm,ConvNorm
-from taco_example.tacotron2_common.utils import to_gpu, get_mask_from_lengths
+from tacotron2_common.layers import LinearNorm,ConvNorm
+from tacotron2_common.utils import to_gpu, get_mask_from_lengths
 
 from torch import save, load, no_grad, LongTensor
 

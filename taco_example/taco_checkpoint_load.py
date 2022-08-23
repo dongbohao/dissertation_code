@@ -28,7 +28,7 @@ print("model device",next(model.parameters()).device)
 
 def print_time_domain(stft,n_fft=1024,sr=22500,win_length=1024,hop_length =256,pic_name=""):
     stft = stft.to("cpu").squeeze().detach().numpy().T
-    print(stft.shape)
+    print(stft.shape) # 512  T_out
 
     y = librosa.istft(stft,n_fft=n_fft,hop_length=hop_length,win_length=win_length)
     print(y.shape)
@@ -63,6 +63,22 @@ def print_time_domain(stft,n_fft=1024,sr=22500,win_length=1024,hop_length =256,p
     plt.savefig("v9_%s.png"%pic_name)
 
 
+def print_fft(stft):
+    stft = stft.to("cpu").squeeze().detach().numpy().T
+    stft = stft[:,:1].flatten()
+    print(stft.shape)
+    t = np.linspace(1,512,512)
+    plt.clf()
+    plt.plot(t, stft, label="volume velocity")
+    plt.legend(loc='best')
+    plt.xlabel("Frequence")
+    plt.ylabel("Magnitude")
+    plt.grid(True)
+    pic_name = "volume_velocity_fft"
+    plt.savefig("v9_%s.png" % pic_name)
+
+from glottal_flow import get_torch_fft
+
 def tt_dataset():
     for i, batchs in enumerate(test_loader):
         for j,db in enumerate(batchs):
@@ -72,6 +88,7 @@ def tt_dataset():
             mel_pos = db["mel_pos"].long().to("cpu")
             src_pos = db["src_pos"].long().to("cpu")
             max_mel_len = db["mel_max_len"]
+            volume_velocity_target = get_torch_fft(mel_target.size(0), mel_target.size(1), 512).float().to("cpu")
 
             print(mel_target.device)
 
@@ -83,17 +100,17 @@ def tt_dataset():
                                                                               length_target=duration)
 
             # Cal Loss
-            mel_loss, mel_postnet_loss, duration_loss = criterion(mel_output,
+            mel_loss, mel_postnet_loss, duration_loss,vvloss = criterion(mel_output,
                                                                   mel_postnet_output,
                                                                   duration_predictor_output,
                                                                   mel_target,
-                                                                  duration)
+                                                                  duration,volume_velocity_target,stft_velocity)
 
             print("Test loss", mel_loss.item())
             mel_output = mel_output[:1,:,:]
             print("mel test",mel_output.size())
             mel_target = mel_target[:1, :, :]
-            #print_spectrogram(mel_output,pic_name="predict_%s"%i)
+            print_spectrogram(mel_output,pic_name="predict_%s"%i)
             #print_spectrogram(mel_target,pic_name="ground_truth_%s"%i)
 
             stft_pressure = stft_pressure[:1,:,:]
@@ -101,6 +118,7 @@ def tt_dataset():
             #print_spectrogram(stft_pressure, pic_name="g_pressure_%s"%i)
             stft_velocity = stft_velocity[:1,:,:]
             print_time_domain(stft_velocity,pic_name="velocity_timedomain")
+            print_fft(stft_velocity)
             #print_spectrogram(stft_velocity, pic_name="g_velocity_%s"%i)
             chainA = chainA[:1,:,:]
             #print_spectrogram(chainA, pic_name="matrix_A_%s"%i)

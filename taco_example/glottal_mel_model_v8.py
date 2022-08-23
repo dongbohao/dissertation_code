@@ -48,7 +48,7 @@ ag = Ag(output='out.txt',
         anneal_factor=0.1,
         config_file=None,
         seed=None,
-        epochs=3,
+        epochs=10,
         epochs_per_checkpoint=50,
         checkpoint_path='',
         resume_from_last=False,
@@ -119,26 +119,46 @@ class BohaoDecoder(nn.Module):
         #decoder_layers = to_device(TransformerDecoderLayer(d_model, nhead, hidden_dim, dropout, batch_first=True))
         #self.chain_matrix_decoder = to_device(TransformerDecoder(decoder_layers, nlayers))
 
-        g_encoder_layers = to_device(TransformerEncoderLayer(d_hid, nhead, d_hid, dropout))
+        g_encoder_layers = to_device(TransformerEncoderLayer(d_hid*2, nhead, d_hid*2, dropout))
         self.upsample_glottal_attn = to_device(TransformerEncoder(g_encoder_layers, nlayers))
 
-        c_encoder_layers = to_device(TransformerEncoderLayer(d_hid, nhead, d_hid, dropout))
+        c_encoder_layers = to_device(TransformerEncoderLayer(d_hid*2, nhead, d_hid*2, dropout))
         self.upsample_chain_attn = to_device(TransformerEncoder(c_encoder_layers, nlayers))
 
 
-        self.fc_glottal_out = to_device(nn.Linear(hidden_dim, hidden_dim*2))
+        self.fc_glottal_out = to_device(nn.Linear(hidden_dim*2, hidden_dim*2))
 
-        self.fc_matrix_out = to_device(nn.Linear(hidden_dim, hidden_dim*2))
+        self.fc_matrix_out = to_device(nn.Linear(hidden_dim*2, hidden_dim*2))
 
         self.glottal_activate = to_device(nn.ReLU())
         self.chain_matrix_activate = to_device(nn.ReLU())
 
         self.upsample_glottal = torch.nn.ConvTranspose1d(hidden_dim,
-                                                 hidden_dim,
-                                                 16, stride=12)
+                                                 hidden_dim*2,
+                                                 24, stride=12)
         self.upsample_matrix = torch.nn.ConvTranspose1d(hidden_dim,
-                                                         hidden_dim,
-                                                         16, stride=12)
+                                                         hidden_dim*2,
+                                                         24, stride=12)
+
+        self.dropout1 = to_device(nn.Dropout(dropout))
+        self.dropout2 = to_device(nn.Dropout(dropout))
+
+
+        self.l3 = to_device(nn.Linear(hidden_dim*2, hidden_dim*2))
+        self.act3 = to_device(nn.ReLU())
+        self.drop3 = to_device(nn.Dropout(dropout))
+
+        self.l4 = to_device(nn.Linear(hidden_dim * 2, hidden_dim * 2))
+        self.act4 = to_device(nn.ReLU())
+        self.drop4 = to_device(nn.Dropout(dropout))
+
+        self.l5 = to_device(nn.Linear(hidden_dim * 2, hidden_dim * 2))
+        self.act5 = to_device(nn.ReLU())
+        self.drop5 = to_device(nn.Dropout(dropout))
+
+        self.l6 = to_device(nn.Linear(hidden_dim * 2, hidden_dim * 2))
+        self.act6 = to_device(nn.ReLU())
+        self.drop6 = to_device(nn.Dropout(dropout))
 
 
     def forward(self, memory, mel_l, src_mask = None):
@@ -177,14 +197,22 @@ class BohaoDecoder(nn.Module):
 
         #print("TTTTT",glottal_outputs.size(),chain_matrix.size())
 
-        glottal_attn_output = self.upsample_glottal_attn(glottal_outputs.permute(0,2,1))
-        chain_attn_output = self.upsample_chain_attn(chain_matrix.permute(0,2,1))
+        #glottal_attn_output = self.upsample_glottal_attn(glottal_outputs.permute(0,2,1))
+        #chain_attn_output = self.upsample_chain_attn(chain_matrix.permute(0,2,1))
+        glottal_attn_output = glottal_outputs.permute(0,2,1)
+        chain_attn_output = chain_matrix.permute(0,2,1)
+
 
         #print("GGGG",glottal_attn_output.size(),chain_attn_output.size())
 
         glottal_decoder_output = self.glottal_activate(self.fc_glottal_out(glottal_attn_output))
-
+        glottal_decoder_output = self.dropout1(glottal_decoder_output)
+        glottal_decoder_output = self.drop3(self.act3(self.l3(glottal_decoder_output)))
+        glottal_decoder_output = self.drop5(self.act5(self.l5(glottal_decoder_output)))
         chain_matrix_output = self.chain_matrix_activate(self.fc_matrix_out(chain_attn_output))
+        chain_matrix_output = self.dropout2(chain_matrix_output)
+        chain_matrix_output = self.drop4(self.act4(self.l4(chain_matrix_output)))
+        chain_matrix_output = self.drop6(self.act6(self.l6(chain_matrix_output)))
 
 
         #print("GGGGGGGGGGGGGGGGGGG",glottal_decoder_output.size(),chain_matrix_output.size())

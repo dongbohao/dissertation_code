@@ -2,19 +2,25 @@ import librosa, librosa.display
 import numpy as np
 import matplotlib.pyplot as plt
 
-signal, sr = librosa.load(r'D:\tacotron2\DeepLearningExamples\PyTorch\SpeechSynthesis\Tacotron2\LJSpeech-1.1\wavs\LJ001-0001.wav')
+signal, sr = librosa.load(r'D:\\tacotron2\\DeepLearningExamples\\PyTorch\\SpeechSynthesis\\Tacotron2\\LJSpeech-1.1/wavs/LJ045-0096.wav')
 
 hop_length = 256
-n_fft = 159
-win_length = 128
+n_fft = 512
+win_length = 512
 
 # Short-time Fourier Transformation on our audio data
-audio_stft = librosa.core.stft(signal, hop_length=hop_length, n_fft=n_fft, win_length = win_length)
+#audio_stft = librosa.core.stft(signal, hop_length=hop_length, n_fft=n_fft, win_length = win_length)
 # gathering the absolute values for all values in our audio_stft
-spectrogram = np.abs(audio_stft)
-print(spectrogram.shape)
+#spectrogram = np.abs(audio_stft)
+#print(spectrogram.shape)
 # Converting the amplitude to decibels
-log_spectro = librosa.amplitude_to_db(spectrogram)
+#log_spectro = librosa.amplitude_to_db(spectrogram)
+
+log_spectro = librosa.feature.melspectrogram(signal,n_fft=n_fft,hop_length=hop_length,win_length=win_length,n_mels=80)
+print(log_spectro)
+log_spectro = librosa.amplitude_to_db(log_spectro)
+
+print(log_spectro.shape)
 # Plotting the short-time Fourier Transformation
 plt.figure(figsize=(20, 5))
 # Using librosa.display.specshow() to create our spectrogram

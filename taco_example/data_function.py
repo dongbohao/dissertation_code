@@ -31,6 +31,7 @@ import torch.utils.data
 import tacotron2_common.layers as layers
 from tacotron2_common.utils import load_wav_to_torch, load_filepaths_and_text, to_gpu
 from text import text_to_sequence
+import librosa
 
 
 class TextMelLoader(torch.utils.data.Dataset):
@@ -200,34 +201,8 @@ from utils import process_text, pad_1D, pad_2D
 import hparams
 from tqdm import tqdm
 from utils import pad_1D_tensor, pad_2D_tensor
-
-def get_data_to_buffer():
-    buffer = list()
-    text = process_text(os.path.join("data", "train.txt"))
-
-    start = time.perf_counter()
-    for i in tqdm(range(len(text))):
-
-        mel_gt_name = os.path.join(
-            hparams.mel_ground_truth, "ljspeech-mel-%05d.npy" % (i+1))
-        mel_gt_target = np.load(mel_gt_name)
-        duration = np.load(os.path.join(
-            hparams.alignment_path, str(i)+".npy"))
-        character = text[i][0:len(text[i])-1]
-        character = np.array(
-            text_to_sequence(character, hparams.text_cleaners))
-
-        character = torch.from_numpy(character)
-        duration = torch.from_numpy(duration)
-        mel_gt_target = torch.from_numpy(mel_gt_target)
-
-        buffer.append({"text": character, "duration": duration,
-                       "mel_target": mel_gt_target})
-
-    end = time.perf_counter()
-    print("cost {:.2f}s to load all data into buffer.".format(end-start))
-
-    return buffer
+from data.ljspeech import get_idx_dict
+from glottal_flow import get_rosenberg_waveform
 
 
 class BufferDataset(Dataset):
@@ -246,6 +221,7 @@ def reprocess_tensor(batch, cut_list):
     texts = [batch[ind]["text"] for ind in cut_list]
     mel_targets = [batch[ind]["mel_target"] for ind in cut_list]
     durations = [batch[ind]["duration"] for ind in cut_list]
+    stft_volume_velocity_list = [torch.Tensor(batch[ind]["stft_volume_velocity"].T) for ind in cut_list]
 
     length_text = np.array([])
     for text in texts:
@@ -271,14 +247,26 @@ def reprocess_tensor(batch, cut_list):
 
     texts = pad_1D_tensor(texts)
     durations = pad_1D_tensor(durations)
+    #print("Mel",mel_targets.size())
     mel_targets = pad_2D_tensor(mel_targets)
+    stft_volume_velocity_targets = pad_2D_tensor(stft_volume_velocity_list)
+    #print("STFT VV",stft_volume_velocity_targets.size())
+    if stft_volume_velocity_targets.size(1) > mel_targets.size(1):
+        stft_volume_velocity_targets = stft_volume_velocity_targets[:,:mel_targets.size(1),:]
+    if stft_volume_velocity_targets.size(1) < mel_targets.size(1):
+        stft_padding = torch.zeros(stft_volume_velocity_targets.size(0),
+                                   mel_targets.size(1) - stft_volume_velocity_targets.size(1),
+                                   stft_volume_velocity_targets.size(2))
+        stft_volume_velocity_targets = torch.cat((stft_volume_velocity_targets,stft_padding),dim=1)
+    #print("STFT VV padded", stft_volume_velocity_targets.size())
 
     out = {"text": texts,
            "mel_target": mel_targets,
            "duration": durations,
            "mel_pos": mel_pos,
            "src_pos": src_pos,
-           "mel_max_len": max_mel_len}
+           "mel_max_len": max_mel_len,
+           "stft_volume_velocity":stft_volume_velocity_targets}
 
     return out
 
@@ -297,3 +285,170 @@ def collate_fn_tensor(batch):
         output.append(reprocess_tensor(batch, cut_list[i]))
 
     return output
+
+
+
+def get_phoneme_type(path):
+    phoneme_type_dict = {}
+    with open(path, encoding='utf-8') as f:
+        for line in f.readlines():
+            l = line.split()
+            phoneme = l[0]
+            phoneme_type = l[1]
+            phoneme_type_dict.update({phoneme:phoneme_type})
+    #print("type dict",phoneme_type_dict)
+    return phoneme_type_dict
+
+def get_phoneme(path,phoneme_type_dict):
+    vocab_phoneme_dict = {}
+    phonme_total = set()
+    with open(path, encoding='utf-8') as f:
+        for line in f.readlines():
+            l = line.split()
+            vocab = l[0].lower()
+            phonemes = l[1:]
+            phoneme_info_list = []
+            previous_type = "common"
+            for phoneme in phonemes:
+                phonme_total.add(phoneme)
+                phoneme_type = phoneme_type_dict[phoneme] if phoneme in phoneme_type_dict else previous_type
+                previous_type = phoneme_type
+                #print("P_type",phoneme_type)
+                phoneme_info = {"phoneme":phoneme,"phoneme_type": phoneme_type,"config":hparams.phoneme_config[phoneme_type]}
+                phoneme_info_list.append(phoneme_info)
+            if vocab in vocab_phoneme_dict:
+                vocab_phoneme_dict[vocab]['phoneme'].append(phoneme_info_list)
+            else:
+                vocab_phoneme_dict[vocab] = {"phoneme":[phoneme_info_list]}
+    #print("Vocab dict",vocab_phoneme_dict.keys())
+    return vocab_phoneme_dict, phonme_total
+
+def get_sli_info(path):
+    sli_dict = {}
+    with open(path, encoding='utf-8') as f:
+        for line in f.readlines():
+            l = line.split()
+            idx = l[0]
+            start = float(l[2])/100
+            duration = float(l[3])/100
+            vocab = l[4]
+            if idx in sli_dict:
+                sli_dict[idx]["vocabs"].append(vocab)
+                sli_dict[idx]["starts"].append(start)
+                sli_dict[idx]["durations"].append(duration)
+            else:
+                sli_dict[idx] = {"vocabs":[vocab],"starts":[start],"durations":[duration]}
+    return sli_dict
+
+
+
+def get_prior_phoneme_sepctrogram_info(top_n=2500):
+    """
+    return dict: key is the index of the train set, value is the spectrogram
+    """
+    meta_path = os.path.join("data", "LJSpeech-1.1")
+    idx_dict = get_idx_dict(meta_path)
+
+    text_list = list(map(lambda x:x, idx_dict.items()))
+    text_list.sort(key=lambda x:x[0])
+    top_n_idx = set(map(lambda x:x[1]["idx"],text_list[:top_n]))
+
+
+    phoneme_type_path = hparams.cmu_phoneme_type_path
+    phoneme_type_dict = get_phoneme_type(phoneme_type_path)
+
+    phoneme_path = hparams.cmu_phoneme_path
+    vocab_phoneme_info,phoneme_total_set = get_phoneme(phoneme_path,phoneme_type_dict)
+
+    sli_path = hparams.cmu_sli_path
+    sli_info = get_sli_info(sli_path)
+
+
+    waveform_dict = {}
+    stft_dict = {}
+    not_in_file = set()
+    finish_count = 0
+    for k,v in sli_info.items():
+        idx = k
+        if idx not in top_n_idx:
+            continue
+        vocabs = v["vocabs"]
+        durations = v["durations"]
+        waveforms = []
+        for index,vocab in enumerate(vocabs):
+            duration = durations[index]
+            if "_sil" in vocab:
+                waveform = get_rosenberg_waveform(duration=duration,is_voiced=False,sr = 22500,t_0=1/125,A=4/1000,t_p=0.8*1/125 * 2/3,t_n=0.8*1/125 * 1/3,O_q=0.8)
+                #print("Wave pice",vocab,len(waveform))
+                waveforms += waveform
+            else:
+                if vocab not in vocab_phoneme_info:
+                    #print("Not in file ", vocab, "current loop",finish_count)
+                    not_in_file.add(vocab)
+                    waveform = get_rosenberg_waveform(duration=phoneme_duration)
+                    #print("Wave pice", vocab,len(waveform))
+                    waveforms += waveform
+                else:
+                    vocab_ = vocab_phoneme_info[vocab]
+                    phonemes = vocab_["phoneme"][0]  # if multi phoneme, chose the first.
+                    phoneme_duration = duration/len(phonemes)
+                    for phoneme in phonemes:
+                        phoneme_config = phoneme['config']
+                        waveform = get_rosenberg_waveform(duration = phoneme_duration,**phoneme_config)
+                        #print("Wave pice",vocab, phoneme,phoneme_duration,duration,len(waveform))
+                        waveforms += waveform
+        waveform_dict[idx] = waveforms
+        stft = librosa.stft(np.array(waveforms),n_fft=1024,hop_length=256,win_length=1024)[1:]
+        #print("STFT", stft.shape,len(waveforms)/22500,sum(durations))
+        stft_dict[idx] = np.abs(stft)
+        if finish_count%100==0:
+            print("finish loop",finish_count,idx)
+        finish_count += 1
+
+
+        #for n in range(top_n):
+        #    idx = text_list[n][1]["idx"]
+        #    print("Idx",idx)
+    print(not_in_file)
+    print("Not in file count", len(not_in_file))
+    print("finish")
+
+    return stft_dict
+
+    #print(waveform_dict["LJ001-0001"])
+
+
+def get_data_to_buffer():
+    buffer = list()
+    text = process_text(os.path.join("data", "train.txt"))
+    a_time = time.time()
+    stft_dict = get_prior_phoneme_sepctrogram_info(top_n=len(text))
+    b_time = time.time()
+    print("Load stft volume velocity time cost", b_time-a_time)
+    start = time.perf_counter()
+    for i in tqdm(range(len(text))):
+        mel_gt_name = os.path.join(
+            hparams.mel_ground_truth, "ljspeech-mel-%05d.npy" % (i + 1))
+        mel_gt_target = np.load(mel_gt_name)
+        duration = np.load(os.path.join(
+            hparams.alignment_path, str(i) + ".npy"))
+        tt = text[i].split("|")[1]
+        idx = text[i].split("|")[0]
+        character = tt[0:len(tt) - 1]
+        character = np.array(
+            text_to_sequence(character, hparams.text_cleaners))
+
+        character = torch.from_numpy(character)
+        duration = torch.from_numpy(duration)
+        mel_gt_target = torch.from_numpy(mel_gt_target)
+
+        buffer.append({"text": character, "duration": duration,
+                       "mel_target": mel_gt_target, "idx": idx,"stft_volume_velocity":stft_dict[idx]})
+
+    end = time.perf_counter()
+    print("cost {:.2f}s to load all data into buffer.".format(end - start))
+
+    return buffer
+
+
+get_prior_phoneme_sepctrogram_info(top_n=1)

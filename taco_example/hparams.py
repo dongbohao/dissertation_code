@@ -1,3 +1,4 @@
+import os
 # Mel
 num_mels = 80
 text_cleaners = ['english_cleaners']
@@ -44,6 +45,95 @@ clear_Time = 20
 
 batch_expand_size = 32
 
+
+cmu_sli_path = os.path.join("data","plp.lmwtSIL_MELS.ctm")
+cmu_phoneme_path = os.path.join("data", "phoneme.ctm")
+cmu_phoneme_type_path = os.path.join("data", "phoneme_type.ctm")
+
+
+phoneme_config = {"vowel":{"O_q":0.8,
+                           "a_m":2/3,
+                           "A":4/1000,
+                           "F_0":125,
+                           "is_voiced":True,
+                           "t_0":1/125,
+                           "t_p":0.8*1/125 * 2/3 ,
+                           "t_n":0.8*1/125 * 1/3},
+
+                  "stop":{"O_q":0.8,
+                           "a_m":2/3,
+                           "A":4/1000,
+                           "F_0":125,
+                           "is_voiced":False,
+                           "t_0":1/125,
+                           "t_p":0.8*1/125 * 2/3 ,
+                           "t_n":0.8*1/125 * 1/3},
+
+                  "affricate":{"O_q":0.8,
+                           "a_m":2/3,
+                           "A":4/1000,
+                           "F_0":125,
+                           "is_voiced":True,
+                           "t_0":1/125,
+                           "t_p":0.8*1/125 * 2/3 ,
+                           "t_n":0.8*1/125 * 1/3},
+
+                  "fricative":{"O_q":0.8,
+                           "a_m":2/3,
+                           "A":4/1000,
+                           "F_0":125,
+                           "is_voiced":True,
+                           "t_0":1/125,
+                           "t_p":0.8*1/125 * 2/3 ,
+                           "t_n":0.8*1/125 * 1/3},
+
+                  "aspirate": {"O_q":0.8,
+                           "a_m":2/3,
+                           "A":4/1000,
+                           "F_0":125,
+                           "is_voiced":False,
+                           "t_0":1/125,
+                           "t_p":0.8*1/125 * 2/3 ,
+                           "t_n":0.8*1/125 * 1/3},
+
+                  "liquid":{"O_q":0.8,
+                           "a_m":2/3,
+                           "A":4/1000,
+                           "F_0":125,
+                           "is_voiced":True,
+                           "t_0":1/125,
+                           "t_p":0.8*1/125 * 2/3 ,
+                           "t_n":0.8*1/125 * 1/3},
+
+                  "nasal":{"O_q":0.8,
+                           "a_m":2/3,
+                           "A":4/1000,
+                           "F_0":125,
+                           "is_voiced":True,
+                           "t_0":1/125,
+                           "t_p":0.8*1/125 * 2/3 ,
+                           "t_n":0.8*1/125 * 1/3},
+
+                  "semivowel":{"O_q":0.8,
+                           "a_m":2/3,
+                           "A":4/1000,
+                           "F_0":125,
+                           "is_voiced":True,
+                           "t_0":1/125,
+                           "t_p":0.8*1/125 * 2/3 ,
+                           "t_n":0.8*1/125 * 1/3},
+
+                  "common":{"O_q":0.8,
+                           "a_m":2/3,
+                           "A":4/1000,
+                           "F_0":125,
+                           "is_voiced":True,
+                           "t_0":1/125,
+                           "t_p":0.8*1/125 * 2/3 ,
+                           "t_n":0.8*1/125 * 1/3},
+                  }
+
+
 import torch
-#device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-device = torch.device('cpu')
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+#device = torch.device('cpu')

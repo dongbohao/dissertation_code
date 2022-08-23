@@ -6,6 +6,8 @@ print(torch.cuda.is_available())
 print(torch.__version__)
 #device = torch.device("cpu")
 tacotron2 = torch.hub.load('NVIDIA/DeepLearningExamples:torchhub', 'nvidia_tacotron2', model_math='fp16')
+#tacotron2 = torch.load(r"C:\Users\xelloss\Downloads\checkpoint_Tacotron2_last.pt")
+#tacotron2 = model.load_state_dict(checkpoint['model_state_dict'])
 tacotron2 = tacotron2.to("cuda")
 tacotron2.eval()
 
@@ -32,6 +34,7 @@ rate = 22050
 
 mel_spec = numpy.vstack(mel_spec)
 print("Mel shape",mel_spec.shape)
+print(mel_spec)
 
 import librosa
 import librosa.display
