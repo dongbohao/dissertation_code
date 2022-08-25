@@ -364,6 +364,7 @@ def get_prior_phoneme_sepctrogram_info(top_n=2500):
     sli_info = get_sli_info(sli_path)
 
 
+
     waveform_dict = {}
     stft_dict = {}
     not_in_file = set()
@@ -372,6 +373,20 @@ def get_prior_phoneme_sepctrogram_info(top_n=2500):
         idx = k
         if idx not in top_n_idx:
             continue
+
+        ronsen_path = os.path.join("data","rosen_waveform", "%s_waveform.npy"%idx)
+
+
+        try:
+            ronsen_stft_abs = np.load(ronsen_path)
+            stft_dict[idx] = ronsen_stft_abs
+            continue
+        except:
+            print("Disk file not available, using calculated results")
+
+
+
+
         vocabs = v["vocabs"]
         durations = v["durations"]
         waveforms = []
@@ -400,7 +415,10 @@ def get_prior_phoneme_sepctrogram_info(top_n=2500):
         waveform_dict[idx] = waveforms
         stft = librosa.stft(np.array(waveforms),n_fft=1024,hop_length=256,win_length=1024)[1:]
         #print("STFT", stft.shape,len(waveforms)/22500,sum(durations))
-        stft_dict[idx] = np.abs(stft)
+        stft_abs = np.abs(stft)
+        stft_dict[idx] = stft_abs
+        np.save(ronsen_path,
+                stft_abs, allow_pickle=False)
         if finish_count%100==0:
             print("finish loop",finish_count,idx)
         finish_count += 1
@@ -451,4 +469,5 @@ def get_data_to_buffer():
     return buffer
 
 
-#get_prior_phoneme_sepctrogram_info(top_n=1)
+#vv = get_prior_phoneme_sepctrogram_info(top_n=1)
+#print(vv["LJ001-0001"][2])
