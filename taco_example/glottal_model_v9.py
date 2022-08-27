@@ -501,8 +501,10 @@ def tt_dataset():
 
             chainA = chainA[:1,:,:]
             print_spectrogram(chainA, pic_name="matrix_A_%s"%i)
+            print_spectrogram(chainA, pic_name="matrix_A_abs_%s" % i)
             chainB = chainB[:1,:,:]
-            print_spectrogram(chainB, pic_name="matrix_B_%s"%i)
+            print_spectrogram(torch.abs(chainB), pic_name="matrix_B_%s"%i)
+            print_spectrogram(torch.abs(chainB), pic_name="matrix_B_abs_%s" % i)
 
 
 
