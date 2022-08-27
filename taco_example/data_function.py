@@ -83,17 +83,17 @@ class TextMelLoader(torch.utils.data.Dataset):
         return melspec
 
     def get_text(self, text):
-        text_norm = torch.IntTensor(text_to_sequence(text, self.text_cleaners))
-        return text_norm
-        # if self.vocab and self.tokenizer:
-        #     if self.print_raw_text:
-        #         print("Raw text", text)
-        #     text_norm = torch.tensor(self.vocab(self.tokenizer(text)), dtype=torch.long)
-        #     #print("shape", text_norm.size())
-        #     #print("Norm text",text_norm)
-        #     return text_norm
-        # else:
-        #     return text
+        #text_norm = torch.IntTensor(text_to_sequence(text, self.text_cleaners))
+        #return text_norm
+        if self.vocab and self.tokenizer:
+            if self.print_raw_text:
+                print("Raw text", text)
+            text_norm = torch.tensor(self.vocab(self.tokenizer(text)), dtype=torch.long)
+            #print("shape", text_norm.size())
+            #print("Norm text",text_norm)
+            return text_norm
+        else:
+            return text
 
     def __getitem__(self, index):
         return self.get_mel_text_pair(self.audiopaths_and_text[index])
@@ -222,6 +222,8 @@ def reprocess_tensor(batch, cut_list):
     mel_targets = [batch[ind]["mel_target"] for ind in cut_list]
     durations = [batch[ind]["duration"] for ind in cut_list]
     stft_volume_velocity_list = [torch.Tensor(batch[ind]["stft_volume_velocity"].T) for ind in cut_list]
+    matrix_A = [batch[ind]["matrix_A"] for ind in cut_list]
+    matrix_B = [batch[ind]["matrix_B"] for ind in cut_list]
 
     length_text = np.array([])
     for text in texts:
@@ -249,6 +251,10 @@ def reprocess_tensor(batch, cut_list):
     durations = pad_1D_tensor(durations)
     #print("Mel",mel_targets.size())
     mel_targets = pad_2D_tensor(mel_targets)
+
+    matrix_A = pad_2D_tensor(matrix_A)
+    matrix_B = pad_2D_tensor(matrix_B)
+
     stft_volume_velocity_targets = pad_2D_tensor(stft_volume_velocity_list)
     #print("STFT VV",stft_volume_velocity_targets.size())
     if stft_volume_velocity_targets.size(1) > mel_targets.size(1):
@@ -258,6 +264,7 @@ def reprocess_tensor(batch, cut_list):
                                    mel_targets.size(1) - stft_volume_velocity_targets.size(1),
                                    stft_volume_velocity_targets.size(2))
         stft_volume_velocity_targets = torch.cat((stft_volume_velocity_targets,stft_padding),dim=1)
+
     #print("STFT VV padded", stft_volume_velocity_targets.size())
 
     out = {"text": texts,
@@ -266,7 +273,9 @@ def reprocess_tensor(batch, cut_list):
            "mel_pos": mel_pos,
            "src_pos": src_pos,
            "mel_max_len": max_mel_len,
-           "stft_volume_velocity":stft_volume_velocity_targets}
+           "stft_volume_velocity":stft_volume_velocity_targets,
+           "matrix_A":matrix_A,
+           "matrix_B":matrix_B}
 
     return out
 
@@ -365,6 +374,7 @@ def get_prior_phoneme_sepctrogram_info(top_n=2500):
 
 
 
+
     waveform_dict = {}
     stft_dict = {}
     not_in_file = set()
@@ -383,9 +393,6 @@ def get_prior_phoneme_sepctrogram_info(top_n=2500):
             continue
         except:
             print("Disk file not available, using calculated results")
-
-
-
 
         vocabs = v["vocabs"]
         durations = v["durations"]
@@ -436,13 +443,156 @@ def get_prior_phoneme_sepctrogram_info(top_n=2500):
     #print(waveform_dict["LJ001-0001"])
 
 
+from ABCD import K_tract_A_frame,K_tract_B_frame,K_nasal_A_frame,K_nasal_B_frame,H_vib_frame
+
+def get_prior_matrix_sepctrogram_info(top_n=2500):
+    """
+    return dict: key is the index of the train set, value is the spectrogram
+    """
+    meta_path = os.path.join("data", "LJSpeech-1.1")
+    idx_dict = get_idx_dict(meta_path)
+
+    text_list = list(map(lambda x:x, idx_dict.items()))
+    text_list.sort(key=lambda x:x[0])
+    top_n_idx = set(map(lambda x:x[1]["idx"],text_list[:top_n]))
+
+
+    phoneme_type_path = hparams.cmu_phoneme_type_path
+    phoneme_type_dict = get_phoneme_type(phoneme_type_path)
+
+    phoneme_path = hparams.cmu_phoneme_path
+    vocab_phoneme_info,phoneme_total_set = get_phoneme(phoneme_path,phoneme_type_dict)
+
+    sli_path = hparams.cmu_sli_path
+    sli_info = get_sli_info(sli_path)
+
+
+
+
+
+    matrix_A_dict = {}
+    matrix_B_dict = {}
+    finish_count = 0
+    for k,v in sli_info.items():
+        idx = k
+        if idx not in top_n_idx:
+            continue
+
+        # load mel data
+        mel_gt_name = os.path.join(
+            hparams.mel_ground_truth, "ljspeech-mel-%05d.npy" % (len(matrix_A_dict) + 1))
+        mel_gt_target = np.load(mel_gt_name)
+
+        matrix_A_path = os.path.join("data","matrix_data", "%s_A_matrix.npy"%idx)
+        matrix_B_path = os.path.join("data", "matrix_data", "%s_B_matrix.npy" % idx)
+
+
+        # try:
+        #     matrix_A_abs = np.load(matrix_A_path)
+        #     matrix_B_abs = np.load(matrix_B_path)
+        #     matrix_A_dict[idx] = torch.tensor(matrix_A_abs)
+        #     matrix_B_dict[idx] = torch.tensor(matrix_B_abs)
+        #     continue
+        # except:
+        #     print("Matrix:Disk file not available, using calculated results")
+
+
+        #print("mel size",mel_gt_target.shape)
+
+        vocabs = v["vocabs"]
+        durations = v["durations"]
+        mel_scale_up = float(mel_gt_target.shape[0] / sum(durations)/100)
+        #print("mel scale up",mel_scale_up,mel_gt_target.shape[0],sum(durations)*100)
+
+        ma_A_list = []
+        ma_B_list = []
+        for index,vocab in enumerate(vocabs):
+            duration = round(durations[index] * mel_scale_up * 100)
+            #print("Druation sacale up",duration)
+            if "_sil" in vocab:
+                matrix_A_slide = torch.zeros(duration,512)
+                matrix_B_slide = torch.zeros(duration,512)
+                ma_A_list += [matrix_A_slide]
+                ma_B_list += [matrix_B_slide]
+            else:
+                if vocab not in vocab_phoneme_info:
+                    matrix_A_slide = torch.cat([K_tract_A_frame.unsqueeze(0)]*duration,dim=0)
+                    matrix_B_slide = torch.cat([(K_tract_B_frame+H_vib_frame).unsqueeze(0)]*duration,dim=0)
+                    ma_A_list += [matrix_A_slide]
+                    ma_B_list += [matrix_B_slide]
+                else:
+                    vocab_ = vocab_phoneme_info[vocab]
+                    phonemes = vocab_["phoneme"][0]  # if multi phoneme, chose the first.
+                    phoneme_duration = round(duration/len(phonemes))
+                    for phoneme in phonemes:
+                        phoneme_config = phoneme['config']
+                        if phoneme_config["is_voiced"]:
+                            if phoneme_config["type"] == "nasal":
+                                matrix_A_slide = torch.cat([K_nasal_A_frame.unsqueeze(0)] * phoneme_duration, dim=0)
+                                matrix_B_slide = torch.cat([(K_nasal_B_frame+H_vib_frame).unsqueeze(0)] * phoneme_duration, dim=0)
+                            else:
+                                matrix_A_slide = torch.cat([K_tract_A_frame.unsqueeze(0)] * phoneme_duration, dim=0)
+                                matrix_B_slide = torch.cat([(K_tract_B_frame+H_vib_frame).unsqueeze(0)] * phoneme_duration, dim=0)
+                        else:
+                            matrix_A_slide = torch.cat([K_tract_A_frame.unsqueeze(0)] * phoneme_duration, dim=0)
+                            matrix_B_slide = torch.zeros(phoneme_duration,512)
+                        ma_A_list += [matrix_A_slide]
+                        ma_B_list += [matrix_B_slide]
+
+
+
+
+        matrix_A_abs = torch.abs(torch.cat(ma_A_list,dim=0))
+
+        matrix_B_abs = torch.abs(torch.cat(ma_B_list,dim=0))
+
+        if matrix_A_abs.size(0) > mel_gt_target.shape[0]:
+            matrix_A_abs = matrix_A_abs[:mel_gt_target.shape[0],:]
+            matrix_B_abs = matrix_B_abs[:mel_gt_target.shape[0],:]
+
+        if matrix_A_abs.size(0) < mel_gt_target.shape[0]:
+            matrix_A_abs = torch.cat([matrix_A_abs,torch.zeros( mel_gt_target.shape[0] -matrix_A_abs.size(0)  ,512)],dim=0)
+            matrix_B_abs = torch.cat([matrix_B_abs, torch.zeros(mel_gt_target.shape[0] - matrix_B_abs.size(0), 512)],dim=0)
+
+
+        #print("Scale up results",mel_scale_up,matrix_A_abs.size(),mel_gt_target.shape)
+        matrix_A_dict[idx] = matrix_A_abs
+        matrix_B_dict[idx] = matrix_B_abs
+        # np.save(matrix_A_path,
+        #         matrix_A_abs.numpy(), allow_pickle=False)
+        # np.save(matrix_B_path,
+        #         matrix_B_abs.numpy(), allow_pickle=False)
+        #if finish_count%100==0:
+        #    print("finish loop chain matrix",finish_count,idx)
+        finish_count += 1
+
+
+        #for n in range(top_n):
+        #    idx = text_list[n][1]["idx"]
+        #    print("Idx",idx)
+    print("finish")
+
+    return matrix_A_dict,matrix_B_dict
+
+
+
+
 def get_data_to_buffer():
     buffer = list()
     text = process_text(os.path.join("data", hparams.train_file))
+
+    # load rosenberg waveform
     a_time = time.time()
     stft_dict = get_prior_phoneme_sepctrogram_info(top_n=len(text))
     b_time = time.time()
-    print("Load stft volume velocity time cost", b_time-a_time)
+    print("Load stft volume velocity time cost", b_time - a_time)
+
+    # load chain matrix
+    a_time = time.time()
+    matrix_A_dict,matrix_B_dict= get_prior_matrix_sepctrogram_info(top_n=len(text))
+    b_time = time.time()
+    print("Load chain matrix time cost", b_time - a_time)
+
     start = time.perf_counter()
     for i in tqdm(range(len(text))):
         mel_gt_name = os.path.join(
@@ -460,8 +610,13 @@ def get_data_to_buffer():
         duration = torch.from_numpy(duration)
         mel_gt_target = torch.from_numpy(mel_gt_target)
 
+
+
         buffer.append({"text": character, "duration": duration,
-                       "mel_target": mel_gt_target, "idx": idx,"stft_volume_velocity":stft_dict[idx]})
+                       "mel_target": mel_gt_target, "idx": idx,
+                       "stft_volume_velocity":stft_dict[idx],
+                       "matrix_A":matrix_A_dict[idx],
+                       "matrix_B":matrix_B_dict[idx]})
 
     end = time.perf_counter()
     print("cost {:.2f}s to load all data into buffer.".format(end - start))
@@ -469,5 +624,12 @@ def get_data_to_buffer():
     return buffer
 
 
-#vv = get_prior_phoneme_sepctrogram_info(top_n=1)
-#print(vv["LJ001-0001"][2])
+#vv = get_prior_phoneme_sepctrogram_info(top_n=2500)
+# print(vv["LJ001-0001"][2])
+#ma,mb = get_prior_matrix_sepctrogram_info(top_n=2500)
+#print(ma["LJ001-0001"].size())
+#from print_plot import print_spectrogram
+#print_spectrogram(ma["LJ001-0001"],pic_name="combine_matrix_A_target_spec")
+#print_spectrogram(mb["LJ001-0001"],pic_name="combine_matrix_B_target_spec")
+
+#get_data_to_buffer()

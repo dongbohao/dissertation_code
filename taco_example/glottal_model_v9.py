@@ -10,6 +10,9 @@ from transformer.Models import Encoder, Decoder
 from transformer.Layers import Linear, PostNet
 from modules import LengthRegulator, CBHG
 import torchaudio
+import librosa
+import librosa.display
+import matplotlib.pyplot as plt
 device = hp.device
 
 # set seed
@@ -37,7 +40,7 @@ ag = Ag(output='out.txt',
         anneal_factor=0.1,
         config_file=None,
         seed=None,
-        epochs=3,
+        epochs=2,
         epochs_per_checkpoint=50,
         checkpoint_path='',
         resume_from_last=False,
@@ -205,9 +208,7 @@ testset_loader = DataLoader(testset, num_workers=0, shuffle=False,
 
 
 
-import librosa
-import librosa.display
-import matplotlib.pyplot as plt
+
 
 
 
@@ -261,7 +262,8 @@ class Tacotron2Loss(nn.Module):
         self.mse_loss = nn.MSELoss()
         self.l1_loss = nn.L1Loss()
 
-    def forward(self, mel, mel_postnet, duration_predicted, mel_target, duration_predictor_target, volume_velocity_target,volume_velocity_predicted):
+    def forward(self, mel, mel_postnet, duration_predicted, mel_target, duration_predictor_target,
+                volume_velocity_target,volume_velocity_predicted,matrix_A_target,matrix_A_predict,matrix_B_target,matrix_B_predict):
         mel_target.requires_grad = False
         mel_loss = self.mse_loss(mel, mel_target)
         #mel_postnet_loss = self.mse_loss(mel_postnet, mel_target)
@@ -274,7 +276,11 @@ class Tacotron2Loss(nn.Module):
         duration_predictor_loss = 0
         volume_velocity_loss = 100*self.mse_loss(volume_velocity_predicted,volume_velocity_target)
 
-        return mel_loss, mel_postnet_loss, duration_predictor_loss,volume_velocity_loss
+        matrix_A_loss = 100 * self.mse_loss(matrix_A_predict, matrix_A_target)
+
+        matrix_B_loss = 100 * self.mse_loss(matrix_B_predict, matrix_B_target)
+
+        return mel_loss, mel_postnet_loss, duration_predictor_loss,volume_velocity_loss,matrix_A_loss,matrix_B_loss
 
 
 #ntokens = len(vocab)  # size of vocabulary
@@ -286,7 +292,7 @@ nlayers = 2  # number of nn.TransformerEncoderLayer in nn.TransformerEncoder
 nhead = 2  # number of heads in nn.MultiheadAttention
 dropout = 0.2  # dropout probability
 #model = TransformerModel(ntokens, emsize, nhead, d_hid, nlayers, dropout, ag.n_mel_channels).cuda()
-model = to_device(FastSpeech())
+model = FastSpeech().to(device)
 model = model.train()
 
 num_param = utils.get_param_num(model)
@@ -296,6 +302,18 @@ lr = 0.01  # learning rate
 optimizer = torch.optim.Adam(model.parameters(),
                                  betas=(0.9, 0.98),
                                  eps=1e-9)
+train_loss_list = []
+val_loss_list = []
+load_from_checkpoint = False
+if load_from_checkpoint:
+    print("Load model from checkpoint")
+    checkpoint = torch.load(r"checkpoint_v9_vv.pt",map_location=device)
+    model.load_state_dict(checkpoint['model_state_dict'])
+    optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+    epoch = checkpoint['epoch']
+    train_loss_list = checkpoint['loss']
+
+
 scheduled_optim = ScheduledOptim(optimizer,
                                      hp.decoder_dim,
                                      hp.n_warm_up_step,
@@ -338,6 +356,9 @@ def train():
             #volume_velocity_target = get_torch_fft(mel_target.size(0), mel_target.size(1), 512).float().to(device)
             volume_velocity_target = db["stft_volume_velocity"].float().to(device)
 
+            matrix_A_target = db["matrix_A"].float().to(device)
+            matrix_B_target = db["matrix_B"].float().to(device)
+
             #print("character", character.size())
             #print("duration",duration.size())
             if not character.size(1)==duration.size(1):
@@ -350,13 +371,15 @@ def train():
                                                                               length_target=duration)
 
             # Cal Loss
-            mel_loss, mel_postnet_loss, duration_loss, volume_velocity_loss = criterion(mel_output,
+            mel_loss, mel_postnet_loss, duration_loss, volume_velocity_loss,matrix_A_loss,matrix_B_loss = criterion(mel_output,
                                                                         mel_postnet_output,
                                                                         duration_predictor_output,
                                                                         mel_target,
                                                                         duration,
                                                                         volume_velocity_target,
-                                                                        stft_velocity        )
+                                                                        stft_velocity ,
+                                                                        matrix_A_target,chainA,
+                                                                        matrix_B_target,chainB)
             total_loss = mel_loss + mel_postnet_loss + duration_loss
 
             # Logger
@@ -369,6 +392,9 @@ def train():
             d_l = 0
             v_v = volume_velocity_loss.item()
             ls = t_l
+
+            ma_l = matrix_A_loss.item()
+            mb_l = matrix_B_loss.item()
 
             total_loss.backward()
             nn.utils.clip_grad_norm_(
@@ -383,7 +409,12 @@ def train():
             history_train_loss += m_l
             total_time += (b_time - a_time)
             if j % log_interval == 0 and j > 0:
-                print("mel loss",m_l,"time cost",(b_time-a_time),"current lr",scheduled_optim.get_learning_rate(),"v_v_loss",v_v)
+                print("mel loss",m_l,
+                      "time cost",(b_time-a_time),
+                      "current lr",scheduled_optim.get_learning_rate(),
+                      "v_v_loss",v_v,
+                      "ma_loss",ma_l,
+                      "mb_loss",mb_l)
                 ttl = 0
                 total_time = 0
 
@@ -393,8 +424,7 @@ def train():
         #    break
     return history_train_loss/hp.batch_expand_size/(i+1)
 
-train_loss_list = []
-val_loss_list = []
+
 
 
 # validation
@@ -413,7 +443,7 @@ def val():
         print("Val loss list", val_loss_list)
         print("Epoch time cost", (d_time - c_time))
 
-        checkpoint_path = "checkpoint_v9_vv_0.pt"
+        checkpoint_path = "checkpoint_v9_vv_mm.pt"
         torch.save({
             'epoch': e,
             'model_state_dict': model.state_dict(),
@@ -444,12 +474,12 @@ def print_spectrogram(pred_y_mel,ground_truth = False,pic_name = ""):
     plt.colorbar(label='Decibels')
 
     if pic_name:
-        plt.savefig("v9_vv_%s.png"%pic_name)
+        plt.savefig("v9_vv_mm_%s.png"%pic_name)
     else:
         if ground_truth:
-            plt.savefig("v9_vv_groun_truth.png")
+            plt.savefig("v9_vv_mm_groun_truth.png")
         else:
-            plt.savefig("v9_vv_test_predict.png")
+            plt.savefig("v9_vv_mm_test_predict.png")
 
 
 
@@ -501,8 +531,10 @@ def tt_dataset():
 
             chainA = chainA[:1,:,:]
             print_spectrogram(chainA, pic_name="matrix_A_%s"%i)
+            print_spectrogram(torch.abs(chainA), pic_name="matrix_A_abs_%s" % i)
             chainB = chainB[:1,:,:]
             print_spectrogram(chainB, pic_name="matrix_B_%s"%i)
+            print_spectrogram(torch.abs(chainB), pic_name="matrix_B_abs_%s" % i)
 
 
 

@@ -8,6 +8,7 @@ from functools import reduce
 
 from tacotron2_common.utils import to_gpu
 
+
 c = 34300 # cm/s
 delta_l = 0.85 # cm/s
 
@@ -278,6 +279,31 @@ K_tract = reduce(lambda matrix_left,matrix_right:broadcast_inner_product(matrix_
 K_nasal = reduce(lambda matrix_left,matrix_right:broadcast_inner_product(matrix_left,matrix_right),[K_N,K_ct,K_G])
 
 H_vib = get_vibration_transfer_function(K_G)
+
+K_tract_A_frame = K_tract[0,0].squeeze()
+K_tract_B_frame = K_tract[0,1].squeeze()
+K_nasal_A_frame = K_nasal[0,0].squeeze()
+K_nasal_B_frame = K_nasal[0,1].squeeze()
+H_vib_frame = H_vib.squeeze()
+
+
+from print_plot import print_spectrogram
+K_tract_A_spec = torch.cat([K_tract[0,0].unsqueeze(0)]*200,dim=0)
+K_tract_B_spec = torch.cat([K_tract[0,1].unsqueeze(0)]*200,dim=0)
+K_nasal_A_spec = torch.cat([K_nasal[0,0].unsqueeze(0)]*200,dim=0)
+K_nasal_B_spec = torch.cat([K_nasal[0,1].unsqueeze(0)]*200,dim=0)
+H_vib_spce = torch.cat([H_vib.unsqueeze(0)]*200,dim=0)
+#print(K_tract_A_spec.size())
+# print_spectrogram(torch.abs(K_tract_A_spec),pic_name="K_tract_A_spec")
+# print_spectrogram(torch.abs(K_tract_B_spec),pic_name="K_tract_B_spec")
+# print_spectrogram(torch.abs(K_nasal_A_spec),pic_name="K_nasal_A_spec")
+# print_spectrogram(torch.abs(K_nasal_B_spec),pic_name="K_nasal_B_spec")
+# print_spectrogram(torch.abs(H_vib_spce),pic_name="H_vib_spec")
+#
+#
+# print_spectrogram(torch.abs(K_tract_A_spec + K_nasal_A_spec),pic_name="K_combine_A_spec")
+# print_spectrogram(torch.abs(K_tract_B_spec + K_nasal_B_spec + H_vib_spce),pic_name="K_combine_B_spec")
+
 # print("K_tract",K_tract.size())
 # print("K_nasal",K_nasal.size())
 # print("H_vib",H_vib.size())

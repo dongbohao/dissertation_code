@@ -386,6 +386,7 @@ trainset_rawtext = data_function.get_data_loader(
 
 def text_iter(dataset):
     for item in dataset:
+        #print(item)
         yield item[0]
 
 
@@ -411,7 +412,7 @@ collate_fn_test = data_function.get_collate_function(
 
 testset = data_function.TextMelLoader(ag.dataset_path, ag.test_files, ag, vocab = vocab, tokenizer=tokenizer)
 
-testset_loader = DataLoader(testset, num_workers=0, shuffle=False,
+testset_loader = DataLoader(trainset, num_workers=0, shuffle=False,
                               sampler=train_sampler,
                               batch_size=1, pin_memory=False,
                               drop_last=True, collate_fn=collate_fn_test)
@@ -511,8 +512,8 @@ def train():
 
 
 
-        if i >0:
-            break
+        #if i >0:
+        #    break
     return history_train_loss/(i+1)
 
 train_loss_list = []
@@ -589,7 +590,7 @@ def print_spectrogram(pred_y_mel,gate,ground_truth = False,pic_name = ""):
         gate_index = gate_list.index(1)
     else:
         gate_index = 2000
-    print("Gate index",gate_index)
+    #print("Gate index",gate_index)
     #log_spectro = log_spectro[:,:gate_index]
 
     # Plotting the short-time Fourier Transformation
@@ -632,10 +633,10 @@ def tt_dataset():
 
         print_spectrogram(pred_y_mel,pred_y_gate_output)
         print_spectrogram(target,gate,ground_truth=True)
-        print_spectrogram(predict_velocity, gate, pic_name="g_velocity")
-        print_spectrogram(predict_pressure, gate, pic_name="g_pressure")
-        print_spectrogram(predict_matrixA, gate, pic_name="matrix_A")
-        print_spectrogram(predict_matrixB, gate, pic_name="matrix_B")
+        print_spectrogram(torch.abs(predict_velocity), gate, pic_name="g_velocity")
+        print_spectrogram(torch.abs(predict_pressure), gate, pic_name="g_pressure")
+        print_spectrogram(torch.abs(predict_matrixA), gate, pic_name="matrix_A")
+        print_spectrogram(torch.abs(predict_matrixB), gate, pic_name="matrix_B")
 
 
 
@@ -645,8 +646,8 @@ def tt_dataset():
 
         break
 
-#val()
-#tt_dataset()
+val()
+tt_dataset()
 
 
 

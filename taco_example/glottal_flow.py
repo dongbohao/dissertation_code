@@ -97,7 +97,7 @@ def rosenberg_c_paramter(t,A,t_p,t_n,t_0):
     return ret
 
 
-def get_rosenberg_waveform(duration=0,is_voiced=True,sr = 22500,t_0=1/125,A=4/1000,t_p=0.8*1/125 * 2/3,t_n=0.8*1/125 * 1/3,O_q=0.8,a_m=2/3,F_0=125):
+def get_rosenberg_waveform(duration=0,is_voiced=True,sr = 22500,t_0=1/125,A=4/1000,t_p=0.8*1/125 * 2/3,t_n=0.8*1/125 * 1/3,O_q=0.8,a_m=2/3,F_0=125, type=""):
     """
     duration: second
     sr: sample rate, 22500

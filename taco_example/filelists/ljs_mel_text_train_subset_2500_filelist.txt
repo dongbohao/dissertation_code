@@ -1,4 +1,4 @@
-LJSpeech-1.1/mels/LJ026-0104.pt|so starch manufactured in the leaves must be digested (dissolved) before it can be transported.
+LJSpeech-1.1/mels/LJ001-0001.pt|Printing, in the only sense with which we are at present concerned, differs from most if not from all the arts and crafts represented in the Exhibition
 LJSpeech-1.1/mels/LJ012-0101.pt|They had had serious work to get at the diamonds. It was necessary to force one heavy door from its hinges, and to cut through the thick panels of another.
 LJSpeech-1.1/mels/LJ012-0130.pt|brought in a man-of-war from Brazil had been transhipped at Falmouth for conveyance to London.
 LJSpeech-1.1/mels/LJ034-0049.pt|so no conclusions can be drawn as to whether these remaining prints preceded or followed the print developed in Dallas by powder.
