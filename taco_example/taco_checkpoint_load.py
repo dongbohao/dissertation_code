@@ -10,8 +10,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 from hparams import device
 
-#model = FastSpeech().cpu()
-model = FastSpeech.to(device)
+model = FastSpeech().cpu()
+#model = FastSpeech().to(device)
 model = model.train()
 
 #checkpoint = torch.load(r"C:\Users\xelloss\Downloads\checkpoint_v5_10ep_lr1-3.pt")
