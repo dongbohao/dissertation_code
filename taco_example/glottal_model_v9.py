@@ -37,7 +37,7 @@ ag = Ag(output='out.txt',
         anneal_factor=0.1,
         config_file=None,
         seed=None,
-        epochs=3,
+        epochs=10,
         epochs_per_checkpoint=50,
         checkpoint_path='',
         resume_from_last=False,
@@ -501,9 +501,9 @@ def tt_dataset():
 
             chainA = chainA[:1,:,:]
             print_spectrogram(chainA, pic_name="matrix_A_%s"%i)
-            print_spectrogram(chainA, pic_name="matrix_A_abs_%s" % i)
+            print_spectrogram(torch.abs(chainA), pic_name="matrix_A_abs_%s" % i)
             chainB = chainB[:1,:,:]
-            print_spectrogram(torch.abs(chainB), pic_name="matrix_B_%s"%i)
+            print_spectrogram(chainB, pic_name="matrix_B_%s"%i)
             print_spectrogram(torch.abs(chainB), pic_name="matrix_B_abs_%s" % i)
 
 
