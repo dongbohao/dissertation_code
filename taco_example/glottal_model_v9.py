@@ -500,6 +500,8 @@ def tt_dataset():
             src_pos = db["src_pos"].long().to(device)
             max_mel_len = db["mel_max_len"]
             volume_velocity_target = get_torch_fft(mel_target.size(0), mel_target.size(1), 512).float().to(device)
+            matrix_A_target = db["matrix_A"].float().to(device)
+            matrix_B_target = db["matrix_B"].float().to(device)
 
             mel_output, mel_postnet_output, duration_predictor_output, stft_pressure,stft_velocity,chainA,chainB = model(character,
                                                                               src_pos,
@@ -508,11 +510,13 @@ def tt_dataset():
                                                                               length_target=duration)
 
             # Cal Loss
-            mel_loss, mel_postnet_loss, duration_loss, volume_velocity_loss = criterion(mel_output,
+            mel_loss, mel_postnet_loss, duration_loss, volume_velocity_loss, ma_loss,mb_loss = criterion(mel_output,
                                                                   mel_postnet_output,
                                                                   duration_predictor_output,
                                                                   mel_target,
-                                                                  duration,volume_velocity_target,stft_velocity)
+                                                                  duration,volume_velocity_target,stft_velocity,
+                                                                                        matrix_A_target,chainA,
+                                                                                        matrix_B_target,chainB)
 
             print("Test loss", mel_loss.item())
             mel_output = mel_output[:1,:,:]

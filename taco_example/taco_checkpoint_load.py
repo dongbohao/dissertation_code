@@ -14,7 +14,7 @@ model = FastSpeech().cpu()
 model = model.train()
 
 #checkpoint = torch.load(r"C:\Users\xelloss\Downloads\checkpoint_v5_10ep_lr1-3.pt")
-checkpoint = torch.load(r"checkpoint_v9_vv.pt",map_location=device)
+checkpoint = torch.load(r"checkpoint_v9_vv_mm.pt",map_location=device)
 model.load_state_dict(checkpoint['model_state_dict'])
 optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
 epoch = checkpoint['epoch']
@@ -90,6 +90,9 @@ def tt_dataset():
             volume_velocity_target = db["stft_volume_velocity"].float().to(device)
             #volume_velocity_target = get_torch_fft(mel_target.size(0), mel_target.size(1), 512).float().to("cpu")
 
+            matrix_A_target = db["matrix_A"].float().to(device)
+            matrix_B_target = db["matrix_B"].float().to(device)
+
             print(mel_target.device)
 
 
@@ -100,11 +103,13 @@ def tt_dataset():
                                                                               length_target=duration)
 
             # Cal Loss
-            mel_loss, mel_postnet_loss, duration_loss,vvloss = criterion(mel_output,
+            mel_loss, mel_postnet_loss, duration_loss,vvloss, ma_loss, mb_loss = criterion(mel_output,
                                                                   mel_postnet_output,
                                                                   duration_predictor_output,
                                                                   mel_target,
-                                                                  duration,volume_velocity_target,stft_velocity)
+                                                                  duration,volume_velocity_target,stft_velocity,
+                                                                                           matrix_A_target,chainA,
+                                                                                           matrix_B_target,chainB)
 
             print("Test loss", mel_loss.item())
             mel_output = mel_output[:1,:,:]
@@ -113,7 +118,9 @@ def tt_dataset():
             print_spectrogram(mel_output,pic_name="predict_%s"%i)
             #print_spectrogram(mel_target,pic_name="ground_truth_%s"%i)
 
-            stft_pressure = stft_pressure[:1,:,:]
+            stft_pressure = stft_pressure[:1, :, :]
+            print_spectrogram(stft_pressure, pic_name="g_pressure_%s" % i)
+            print_spectrogram(torch.abs(stft_pressure), pic_name="g_pressure_abs_%s" % i)
 
             #print_spectrogram(stft_pressure, pic_name="g_pressure_%s"%i)
             stft_velocity = stft_velocity[:1,:,:]
@@ -128,11 +135,13 @@ def tt_dataset():
 
             print_spectrogram(torch.abs(stft_velocity), pic_name="g_velocity_abs_%s" % i)
 
-            #print_spectrogram(stft_velocity, pic_name="g_velocity_%s"%i)
-            chainA = chainA[:1,:,:]
-            #print_spectrogram(chainA, pic_name="matrix_A_%s"%i)
-            chainB = chainB[:1,:,:]
-            #print_spectrogram(chainB, pic_name="matrix_B_%s"%i)
+
+            chainA = chainA[:1, :, :]
+            print_spectrogram(chainA, pic_name="matrix_A_%s" % i)
+            print_spectrogram(torch.abs(chainA), pic_name="matrix_A_abs_%s" % i)
+            chainB = chainB[:1, :, :]
+            print_spectrogram(chainB, pic_name="matrix_B_%s" % i)
+            print_spectrogram(torch.abs(chainB), pic_name="matrix_B_abs_%s" % i)
 
 
 
