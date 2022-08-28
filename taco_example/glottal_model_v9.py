@@ -276,9 +276,9 @@ class Tacotron2Loss(nn.Module):
         duration_predictor_loss = 0
         volume_velocity_loss = 100*self.mse_loss(volume_velocity_predicted,volume_velocity_target)
 
-        matrix_A_loss = 5 * self.mse_loss(matrix_A_predict, matrix_A_target)
+        matrix_A_loss = 0.1 * self.mse_loss(matrix_A_predict, matrix_A_target)
 
-        matrix_B_loss = 20 * self.mse_loss(matrix_B_predict, matrix_B_target)
+        matrix_B_loss = 10 * self.mse_loss(matrix_B_predict, matrix_B_target)
 
         return mel_loss, mel_postnet_loss, duration_predictor_loss,volume_velocity_loss,matrix_A_loss,matrix_B_loss
 
