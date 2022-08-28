@@ -146,5 +146,5 @@ train_file = "trainsub.txt"
 #train_file = "train_mini.txt"
 
 import torch
-#device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-device = torch.device('cpu')
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+#device = torch.device('cpu')
