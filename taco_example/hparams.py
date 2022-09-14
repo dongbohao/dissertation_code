@@ -31,7 +31,7 @@ mel_ground_truth = "./mels"
 alignment_path = "./alignments"
 
 batch_size = 2
-epochs = 2000
+epochs = 20
 n_warm_up_step = 4000
 
 learning_rate = 1e-3
@@ -43,8 +43,11 @@ save_step = 3000
 log_step = 5
 clear_Time = 20
 
-batch_expand_size = 32
+batch_expand_size = 2
 
+
+sampling_rate=22050
+hop_length=256
 
 cmu_sli_path = os.path.join("data","plp.lmwtSIL_MELS.ctm")
 cmu_phoneme_path = os.path.join("data", "phoneme.ctm")
@@ -142,8 +145,8 @@ phoneme_config = {"vowel":{"O_q":0.8,
                            "t_n":0.8*1/125 * 1/3},
                   }
 
-train_file = "trainsub.txt"
-#train_file = "train_mini.txt"
+#train_file = "trainsub.txt"
+train_file = "train_12000.txt"
 
 import torch
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')

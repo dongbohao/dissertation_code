@@ -224,6 +224,7 @@ def reprocess_tensor(batch, cut_list):
     stft_volume_velocity_list = [torch.Tensor(batch[ind]["stft_volume_velocity"].T) for ind in cut_list]
     matrix_A = [batch[ind]["matrix_A"] for ind in cut_list]
     matrix_B = [batch[ind]["matrix_B"] for ind in cut_list]
+    idx = [batch[ind]["idx"] for ind in cut_list]
 
     length_text = np.array([])
     for text in texts:
@@ -275,7 +276,8 @@ def reprocess_tensor(batch, cut_list):
            "mel_max_len": max_mel_len,
            "stft_volume_velocity":stft_volume_velocity_targets,
            "matrix_A":matrix_A,
-           "matrix_B":matrix_B}
+           "matrix_B":matrix_B,
+           "idx":idx}
 
     return out
 
@@ -351,16 +353,13 @@ def get_sli_info(path):
 
 
 
-def get_prior_phoneme_sepctrogram_info(top_n=2500):
+def get_prior_phoneme_sepctrogram_info(top_n_idx):
     """
     return dict: key is the index of the train set, value is the spectrogram
     """
     meta_path = os.path.join("data", "LJSpeech-1.1")
     idx_dict = get_idx_dict(meta_path)
 
-    text_list = list(map(lambda x:x, idx_dict.items()))
-    text_list.sort(key=lambda x:x[0])
-    top_n_idx = set(map(lambda x:x[1]["idx"],text_list[:top_n]))
 
 
     phoneme_type_path = hparams.cmu_phoneme_type_path
@@ -445,16 +444,13 @@ def get_prior_phoneme_sepctrogram_info(top_n=2500):
 
 from ABCD import K_tract_A_frame,K_tract_B_frame,K_nasal_A_frame,K_nasal_B_frame,H_vib_frame
 
-def get_prior_matrix_sepctrogram_info(top_n=2500):
+def get_prior_matrix_sepctrogram_info(top_n_idx,idx_to_i):
     """
     return dict: key is the index of the train set, value is the spectrogram
     """
     meta_path = os.path.join("data", "LJSpeech-1.1")
     idx_dict = get_idx_dict(meta_path)
 
-    text_list = list(map(lambda x:x, idx_dict.items()))
-    text_list.sort(key=lambda x:x[0])
-    top_n_idx = set(map(lambda x:x[1]["idx"],text_list[:top_n]))
 
 
     phoneme_type_path = hparams.cmu_phoneme_type_path
@@ -477,10 +473,12 @@ def get_prior_matrix_sepctrogram_info(top_n=2500):
         idx = k
         if idx not in top_n_idx:
             continue
+        #print("find idx",idx)
 
         # load mel data
+        ii = idx_to_i[idx]
         mel_gt_name = os.path.join(
-            hparams.mel_ground_truth, "ljspeech-mel-%05d.npy" % (len(matrix_A_dict) + 1))
+            hparams.mel_ground_truth, "ljspeech-mel-%05d.npy" % (ii+1))
         mel_gt_target = np.load(mel_gt_name)
 
         matrix_A_path = os.path.join("data","matrix_data", "%s_A_matrix.npy"%idx)
@@ -577,31 +575,45 @@ def get_prior_matrix_sepctrogram_info(top_n=2500):
 
 
 
-def get_data_to_buffer():
+def get_data_to_buffer(load_file):
     buffer = list()
-    text = process_text(os.path.join("data", hparams.train_file))
+    idx_to_i = {}
+    all_text = process_text(os.path.join("data", "train_12000.txt"))
+    top_n_idx = set()
+    for i in range(len(all_text)):
+        idx = all_text[i].split("|")[0]
+        idx_to_i[idx] = i
+
+    text = process_text(os.path.join("data", load_file))
+    for i in range(len(text)):
+        idx = text[i].split("|")[0]
+        top_n_idx.add(idx)
+    print("idx len",len(top_n_idx))
+
+
 
     # load rosenberg waveform
     a_time = time.time()
-    stft_dict = get_prior_phoneme_sepctrogram_info(top_n=len(text))
+    stft_dict = get_prior_phoneme_sepctrogram_info(top_n_idx)
     b_time = time.time()
     print("Load stft volume velocity time cost", b_time - a_time)
 
     # load chain matrix
     a_time = time.time()
-    matrix_A_dict,matrix_B_dict= get_prior_matrix_sepctrogram_info(top_n=len(text))
+    matrix_A_dict,matrix_B_dict= get_prior_matrix_sepctrogram_info(top_n_idx,idx_to_i)
     b_time = time.time()
     print("Load chain matrix time cost", b_time - a_time)
 
     start = time.perf_counter()
-    for i in tqdm(range(len(text))):
+    for j in tqdm(range(len(text))):
+        tt = text[j].split("|")[1]
+        idx = text[j].split("|")[0]
+        i = idx_to_i[idx]
         mel_gt_name = os.path.join(
             hparams.mel_ground_truth, "ljspeech-mel-%05d.npy" % (i + 1))
         mel_gt_target = np.load(mel_gt_name)
         duration = np.load(os.path.join(
             hparams.alignment_path, str(i) + ".npy"))
-        tt = text[i].split("|")[1]
-        idx = text[i].split("|")[0]
         character = tt[0:len(tt) - 1]
         character = np.array(
             text_to_sequence(character, hparams.text_cleaners))
@@ -632,4 +644,4 @@ def get_data_to_buffer():
 #print_spectrogram(ma["LJ001-0001"],pic_name="combine_matrix_A_target_spec")
 #print_spectrogram(mb["LJ001-0001"],pic_name="combine_matrix_B_target_spec")
 
-#get_data_to_buffer()
+#get_data_to_buffer("train_1.txt")
